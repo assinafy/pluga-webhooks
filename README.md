@@ -4,7 +4,7 @@
 
 Receba eventos de assinatura da Assinafy na Pluga e use a API para consultar documentos, criar signatários e enviar documentos a partir de modelos. Este guia usa **Pluga Webhooks + HTTP Request**, com chave de API e ID do workspace.
 
-**Modalidade:** configuração manual via Webhooks. A candidatura ao programa de parceiros não equivale à aprovação ou à disponibilidade de um conector nativo da Assinafy na Pluga.
+**Modalidade:** configuração manual via Webhooks. Candidatura ao programa de parceiros enviada em 4 de outubro de 2026, aguardando avaliação da Pluga. Isso não equivale à aprovação ou à disponibilidade de um conector nativo da Assinafy na Pluga.
 
 ## Antes de começar
 
