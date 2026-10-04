@@ -243,3 +243,5 @@ PDFs e ZIPs finais foram baixados e conferidos diretamente pela API, fora da Plu
 - Destinos propostos: [Google Sheets](https://pluga.co/ferramentas/google-sheets/integracao/), [Pipedrive](https://pluga.co/ferramentas/pipedrive/integracao/) e [Trello](https://pluga.co/ferramentas/trello/integracao/).
 
 Guia mantido pela Assinafy. Atualizado em 4 de outubro de 2026.
+
+Contato: [contato@assinafy.com.br](mailto:contato@assinafy.com.br).
