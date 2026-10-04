@@ -1,0 +1,22 @@
+{
+  "format": "Manual Pluga Webhooks setup worksheet; not a Pluga import file",
+  "outgoing_action": "HTTP Request > Enviar uma mensagem via HTTP Request",
+  "input_mode": "Preencher campos com um JSON",
+  "incoming_trigger": "Webhooks > Notificação recebida",
+  "base_url": "https://api.assinafy.com.br/v1",
+  "headers": { "X-Api-Key": "<ASSINAFY_API_KEY>", "Accept": "application/json", "Content-Type": "application/json" },
+  "requests": [
+    { "id": "list_workspaces", "name": "Consultar workspaces", "method": "GET", "path": "/accounts", "response_data_key": "data", "unique_key": "id" },
+    { "id": "list_signers", "name": "Consultar signatários", "method": "GET", "path": "/accounts/{accountId}/signers", "query": { "page": 1, "per-page": 50 }, "response_data_key": "data", "unique_key": "id" },
+    { "id": "list_templates", "name": "Consultar modelos", "method": "GET", "path": "/accounts/{accountId}/templates", "query": { "page": 1, "per-page": 50 }, "response_data_key": "data", "unique_key": "id" },
+    { "id": "list_documents", "name": "Consultar documentos", "method": "GET", "path": "/accounts/{accountId}/documents", "query": { "page": 1, "per-page": 50 }, "response_data_key": "data", "unique_key": "id" },
+    { "id": "create_signer", "name": "Criar signatário", "method": "POST", "path": "/accounts/{accountId}/signers", "body": { "full_name": "Signatário de teste", "email": "signatario@example.com" }, "response_model": { "status": 200, "message": "", "data": { "id": "signer_example", "full_name": "Signatário de teste", "email": "signatario@example.com" } } },
+    { "id": "get_document", "name": "Consultar documento", "method": "GET", "path": "/documents/{documentId}", "query": { "expand": "assignment" }, "response_model": { "status": 200, "message": "", "data": { "id": "document_example", "account_id": "workspace_example", "name": "Teste Pluga.pdf", "status": "metadata_ready" } } },
+    { "id": "create_document_from_template", "name": "Criar e enviar documento a partir de modelo", "method": "POST", "path": "/accounts/{accountId}/templates/{templateId}/documents", "body": { "name": "Teste Pluga", "signers": [ { "id": "signer_example", "role_id": "role_example", "verification_method": "Email", "notification_methods": ["Email"] } ], "editor_fields": [ { "field_id": "field_example", "value": "Valor de teste" } ] }, "response_model": { "status": 200, "message": "", "data": { "id": "document_example", "account_id": "workspace_example", "status": "pending" } } },
+    { "id": "request_signatures", "name": "Solicitar assinaturas de documento existente", "method": "POST", "path": "/documents/{documentId}/assignments", "body": { "method": "virtual", "signers": [ { "id": "signer_example", "verification_method": "Email", "notification_methods": ["Email"] } ] }, "response_model": { "status": 200, "message": "", "data": { "id": "assignment_example" } } },
+    { "id": "event_types", "name": "Consultar eventos disponíveis", "method": "GET", "path": "/webhooks/event-types", "response_data_key": "data", "unique_key": "id" },
+    { "id": "get_subscription", "name": "Consultar inscrição de webhook", "method": "GET", "path": "/accounts/{accountId}/webhooks/subscriptions" },
+    { "id": "register_subscription", "name": "Configuração inicial do webhook", "method": "PUT", "path": "/accounts/{accountId}/webhooks/subscriptions", "setup_only": true, "body": { "url": "https://example.com/replace-with-private-pluga-webhook", "email": "operacoes@example.com", "is_active": true, "events": [ "document_ready", "signer_signed_document", "signer_rejected_document", "document_processing_failed" ] } },
+    { "id": "delivery_history", "name": "Consultar entregas de webhook", "method": "GET", "path": "/accounts/{accountId}/webhooks", "query": { "page": 1, "per-page": 50 }, "response_data_key": "data", "unique_key": "id" }
+  ]
+}
