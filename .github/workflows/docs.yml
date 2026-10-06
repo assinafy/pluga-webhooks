@@ -1,0 +1,51 @@
+name: Documentation CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Markdown links and tables
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify documentation
+        run: |
+          python3 - <<'PYTHON'
+          import re
+          from pathlib import Path
+          from urllib.parse import unquote, urlsplit
+          pages = list(Path('.').glob('**/*.md'))
+          assert pages, 'No Markdown documentation found'
+          for page in pages:
+              text = page.read_text()
+              assert text.strip(), f'Empty document: {page}'
+              for target in re.findall(r'\]\(([^)]+)\)', text):
+                  link = urlsplit(target.split()[0])
+                  if link.scheme == 'mailto':
+                      assert '@' in link.path, f'Invalid email link: {target}'
+                  elif link.scheme:
+                      assert link.scheme == 'https' and link.hostname, f'Invalid public link: {target}'
+                  elif link.path:
+                      assert (page.parent / unquote(link.path)).is_file(), f'Missing local link: {page}: {target}'
+              width = None
+              for line in text.splitlines():
+                  if line.startswith('|'):
+                      columns = len(re.split(r'(?<!\\)\|', line))
+                      if width is None:
+                          width = columns
+                      assert columns == width, f'Inconsistent table: {page}: {line}'
+                  else:
+                      width = None
+          print(f'Checked {len(pages)} Markdown documents')
+          PYTHON
