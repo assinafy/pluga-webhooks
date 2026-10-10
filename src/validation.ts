@@ -1,10 +1,14 @@
 import { invariant } from './errors.js';
 
+export const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
+
 export function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 export function id(value: unknown, label = 'ID'): string {
-  invariant(typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value),
+  invariant(typeof value === 'string' && ID_PATTERN.test(value),
     'INVALID_ID', `${label} must be an unencoded identifier, not a URL or path.`);
   return value;
 }
@@ -50,7 +54,7 @@ export function validate(value: unknown, schema: Schema, schemas: Record<string,
     invariant(typeof value === 'string', 'INVALID_INPUT', `${path}: expected text.`);
     fail(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value), 'control characters are not allowed.');
     if (schema.maxLength !== undefined) fail(value.length <= schema.maxLength, 'text is too long.');
-    if (schema.format === 'email') fail(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), 'invalid email address.');
+    if (schema.format === 'email') fail(EMAIL_PATTERN.test(value), 'invalid email address.');
     if (schema.format === 'date-time') fail(/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)) &&
       new Date(`${value.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === value.slice(0, 10), 'use a valid ISO 8601 date with timezone.');
   } else if (schema.type === 'number' || schema.type === 'integer') {

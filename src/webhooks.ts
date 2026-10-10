@@ -1,8 +1,12 @@
 import type { AssinafyClient } from './client.js';
 import { IntegrationError, invariant } from './errors.js';
-import { id, record, validate } from './validation.js';
+import { EMAIL_PATTERN, ID_PATTERN, id, record, validate } from './validation.js';
 import type { Schema } from './validation.js';
 import { contract } from './actions.js';
+
+const SECRET_PATTERN = /^whsec_[A-Za-z0-9+/]+={0,2}$/;
+const sameEvents = (saved: string[], requested: string[]) =>
+  saved.length === requested.length && saved.every(event => requested.includes(event));
 
 export interface Subscription {
   url: string | null;
@@ -38,7 +42,7 @@ export async function registerSubscription(client: AssinafyClient, input: Subscr
   invariant(record(input) && Object.keys(input).every(key => ['url', 'email', 'events', 'is_active'].includes(key)),
     'INVALID_INPUT', 'Unsupported subscription field.');
   validateWebhookUrl(input.url);
-  invariant(typeof input.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email),
+  invariant(typeof input.email === 'string' && EMAIL_PATTERN.test(input.email),
     'INVALID_INPUT', 'A notification email is required.');
   invariant(input.is_active === true, 'INVALID_INPUT', 'Setup requires an active subscription.');
   invariant(Array.isArray(input.events) && input.events.length > 0 &&
@@ -47,7 +51,7 @@ export async function registerSubscription(client: AssinafyClient, input: Subscr
   const current = await getSubscription(client);
   if (current?.url) {
     const same = current.url === input.url && current.email === input.email && current.is_active === input.is_active &&
-      current.events.length === input.events.length && current.events.every(event => input.events.includes(event));
+      sameEvents(current.events, input.events);
     invariant(same, 'EXISTING_SUBSCRIPTION', 'This workspace already has a webhook configuration. Use a dedicated test workspace or review it in Assinafy before replacing it.');
     return current;
   }
@@ -55,8 +59,7 @@ export async function registerSubscription(client: AssinafyClient, input: Subscr
   const result = await client.envelope<Subscription>('PUT', await client.accountPath('/webhooks/subscriptions'), { json: input });
   invariant(record(result.data) && result.data.url === input.url && result.data.is_active === true &&
     result.data.email === input.email &&
-    Array.isArray(result.data.events) && result.data.events.length === input.events.length &&
-    input.events.every(event => result.data.events.includes(event)), 'INVALID_RESPONSE', 'The saved subscription differs from the request; inspect it before continuing.');
+    Array.isArray(result.data.events) && sameEvents(result.data.events, input.events), 'INVALID_RESPONSE', 'The saved subscription differs from the request; inspect it before continuing.');
   return result.data;
 }
 
@@ -108,7 +111,7 @@ export interface WebhookEndpointInput {
   signing_enabled?: boolean;
 }
 function endpoint(value: unknown): WebhookEndpoint {
-  invariant(record(value) && typeof value.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value.id) &&
+  invariant(record(value) && typeof value.id === 'string' && ID_PATTERN.test(value.id) &&
     typeof value.url === 'string' && typeof value.email === 'string' && (value.name === null || typeof value.name === 'string') &&
     Array.isArray(value.events) && value.events.every(event => typeof event === 'string') &&
     typeof value.is_active === 'boolean' && typeof value.signing_enabled === 'boolean' &&
@@ -134,19 +137,15 @@ export async function listWebhookEndpoints(client: AssinafyClient): Promise<Webh
 export async function registerWebhookEndpoint(client: AssinafyClient, input: WebhookEndpointInput): Promise<WebhookEndpoint> {
   await validateEndpointInput(client, input, contract.webhookEndpointInput as Schema);
   const rows = await listWebhookEndpoints(client);
+  const matches = (row: WebhookEndpoint) => row.url === input.url && row.email === input.email && row.name === (input.name ?? null) &&
+    row.is_active === (input.is_active ?? true) && row.signing_enabled === (input.signing_enabled ?? false) && sameEvents(row.events, input.events);
   const current = rows.find(row => row.url === input.url);
   if (current) {
-    invariant(current.email === input.email && current.name === (input.name ?? null) &&
-      current.is_active === (input.is_active ?? true) && current.signing_enabled === (input.signing_enabled ?? false) &&
-      current.events.length === input.events.length && current.events.every(event => input.events.includes(event)),
-    'EXISTING_SUBSCRIPTION', 'This URL already has different settings. Update its endpoint explicitly.');
+    invariant(matches(current), 'EXISTING_SUBSCRIPTION', 'This URL already has different settings. Update its endpoint explicitly.');
     return current;
   }
   const result = endpoint(await client.post(await client.accountPath('/webhooks/endpoints'), input));
-  invariant(result.url === input.url && result.email === input.email && result.name === (input.name ?? null) &&
-    result.is_active === (input.is_active ?? true) && result.signing_enabled === (input.signing_enabled ?? false) &&
-    result.events.length === input.events.length && result.events.every(event => input.events.includes(event)),
-  'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.');
+  invariant(matches(result), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.');
   return result;
 }
 export async function updateWebhookEndpoint(client: AssinafyClient, endpointId: string, input: Partial<WebhookEndpointInput>): Promise<WebhookEndpoint> {
@@ -154,7 +153,7 @@ export async function updateWebhookEndpoint(client: AssinafyClient, endpointId: 
   await validateEndpointInput(client, input, contract.webhookEndpointUpdateInput as Schema);
   const result = endpoint((await client.envelope('PUT', await client.accountPath(`/webhooks/endpoints/${endpointId}`), { json: input })).data);
   invariant(result.id === endpointId && Object.entries(input).every(([key, value]) => key === 'events' ?
-    result.events.length === (value as string[]).length && result.events.every(event => (value as string[]).includes(event)) :
+    sameEvents(result.events, value as string[]) :
     result[key as keyof WebhookEndpoint] === value), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.');
   return result;
 }
@@ -165,14 +164,14 @@ export async function deleteWebhookEndpoint(client: AssinafyClient, endpointId: 
 export async function getWebhookSecret(client: AssinafyClient, endpointId: string, rotate = false): Promise<string> {
   const suffix = `/webhooks/endpoints/${id(endpointId, 'Endpoint ID')}/secret${rotate ? '/rotate' : ''}`;
   const { data } = await client.envelope(rotate ? 'POST' : 'GET', await client.accountPath(suffix));
-  invariant(record(data) && typeof data.secret === 'string' && /^whsec_[A-Za-z0-9+/]+={0,2}$/.test(data.secret),
+  invariant(record(data) && typeof data.secret === 'string' && SECRET_PATTERN.test(data.secret),
     'INVALID_RESPONSE', 'Unexpected webhook signing secret.');
   return data.secret;
 }
 
 /** Verify the unchanged UTF-8 body before parsing it or using any event fields. */
 export async function verifyWebhookSignature(rawBody: string, headers: Headers, secret: string, now = Date.now()): Promise<void> {
-  invariant(typeof secret === 'string' && /^whsec_[A-Za-z0-9+/]+={0,2}$/.test(secret), 'INVALID_CREDENTIALS', 'Expected a Standard Webhooks signing secret.');
+  invariant(typeof secret === 'string' && SECRET_PATTERN.test(secret), 'INVALID_CREDENTIALS', 'Expected a Standard Webhooks signing secret.');
   invariant(typeof rawBody === 'string' && Number.isFinite(now), 'INVALID_INPUT', 'Expected raw UTF-8 body and current time in milliseconds.');
   const messageId = headers.get('webhook-id');
   const timestamp = headers.get('webhook-timestamp');

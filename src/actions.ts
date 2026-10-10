@@ -1,7 +1,7 @@
 import pinnedContract from './contract.json' with { type: 'json' };
 import { AssinafyClient } from './client.js';
 import { invariant } from './errors.js';
-import { id, record, validate } from './validation.js';
+import { E164_PATTERN, EMAIL_PATTERN, id, record, validate } from './validation.js';
 import type { Schema } from './validation.js';
 import type { Resource } from './types.js';
 
@@ -59,8 +59,8 @@ async function verifyContacts(client: AssinafyClient, rows: Record<string, unkno
     const contact = existing.get(String(row.id))!;
     const notifications = row.notification_methods as string[] | undefined;
     const channel = notifications?.[0] ?? (row.verification_method === 'Whatsapp' ? 'Whatsapp' : 'Email');
-    invariant(channel === 'Whatsapp' ? typeof contact.whatsapp_phone_number === 'string' && /^\+[1-9]\d{7,14}$/.test(contact.whatsapp_phone_number) :
-      typeof contact.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email),
+    invariant(channel === 'Whatsapp' ? typeof contact.whatsapp_phone_number === 'string' && E164_PATTERN.test(contact.whatsapp_phone_number) :
+      typeof contact.email === 'string' && EMAIL_PATTERN.test(contact.email),
     'INVALID_CONTACT', 'The signer needs a valid contact for the selected notification channel.');
     if (row.verification_method === 'DigitalCertificate') invariant(typeof contact.government_id === 'string' &&
       /^(?:\d{11}|[A-Z0-9]{12}\d{2})$/.test(contact.government_id),
@@ -80,7 +80,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
     'INVALID_EXPIRATION', 'Expiration must be at least one hour in the future.');
   if (action === 'create_signer') {
     invariant(typeof body.full_name === 'string' && body.full_name.trim(), 'INVALID_INPUT', 'Full name is required.');
-    if (body.whatsapp_phone_number !== undefined) invariant(/^\+[1-9]\d{7,14}$/.test(String(body.whatsapp_phone_number)),
+    if (body.whatsapp_phone_number !== undefined) invariant(E164_PATTERN.test(String(body.whatsapp_phone_number)),
       'INVALID_PHONE', 'Use an E.164 WhatsApp number, including + and country code.');
     return client.post<Resource>(await client.accountPath('/signers'), body);
   }

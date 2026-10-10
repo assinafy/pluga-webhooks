@@ -1,4 +1,4 @@
-import { API_URLS, limitedBody } from './client.js';
+import { API_URLS, checkTimeout, limitedBody } from './client.js';
 import { IntegrationError, invariant } from './errors.js';
 import { record } from './validation.js';
 import type { Environment, Runtime } from './types.js';
@@ -37,8 +37,7 @@ function redirect(value: string): URL {
   return url;
 }
 async function request(url: string, runtime: Runtime, fields?: Record<string, string>, empty = false): Promise<unknown> {
-  invariant(runtime.timeoutMs === undefined || (Number.isInteger(runtime.timeoutMs) && runtime.timeoutMs > 0 && runtime.timeoutMs <= 120_000),
-    'INVALID_RUNTIME', 'Timeout must be between 1 and 120000 milliseconds.');
+  checkTimeout(runtime);
   let response: Response;
   try {
     response = await (runtime.fetch ?? globalThis.fetch)(url, {

@@ -128,6 +128,13 @@ test('webhook signature uses exact raw UTF-8 bytes, multiple v1 entries and a fi
   assert.equal(normalizeEvent(event, event.account_id, messageId).deduplication_key, `${event.account_id}:${messageId}`);
   assert.throws(() => normalizeEvent({ ...event, object: { ...event.object, type: 'Signer' } }, event.account_id), hasCode('INVALID_EVENT'));
 });
+test('webhook signature matches the published Standard Webhooks test vector', async () => {
+  const headers = new Headers({ 'webhook-id': 'msg_p5jXN8AQM9LWM0D4loKWxJek', 'webhook-timestamp': '1614265330',
+    'webhook-signature': 'v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=' });
+  const secret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
+  await verifyWebhookSignature('{"test": 2432232314}', headers, secret, 1614265330000);
+  await assert.rejects(verifyWebhookSignature('{"test": 2432232315}', headers, secret, 1614265330000), hasCode('INVALID_WEBHOOK_SIGNATURE'));
+});
 test('invalid file redirects and JSON downloads produce redacted integration errors', async () => {
   const bad = mock([{ response: new Response(null, { status: 302, headers: { Location: 'https://[bad-private-token' } }) }]);
   await assert.rejects(client(bad).binary('/documents/document1/download/original'), e => e.code === 'REDIRECT_BLOCKED' && !e.message.includes('private-token')); bad.done();

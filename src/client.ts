@@ -1,5 +1,5 @@
 import { IntegrationError, invariant, unknownWriteOutcome } from './errors.js';
-import { id, record } from './validation.js';
+import { ID_PATTERN, id, record } from './validation.js';
 import type { Account, Credentials, Environment, Runtime } from './types.js';
 
 export const API_URLS = Object.freeze({
@@ -37,8 +37,7 @@ export class AssinafyClient {
     this.runtime = Object.freeze({ ...runtime, ...(runtime.trustedDownloadOrigins ? { trustedDownloadOrigins: Object.freeze([...runtime.trustedDownloadOrigins]) } : {}) });
     this.#fetch = runtime.fetch ?? globalThis.fetch;
     invariant(typeof this.#fetch === 'function', 'MISSING_CAPABILITY', 'An HTTP transport is required.');
-    invariant(runtime.timeoutMs === undefined || (Number.isInteger(runtime.timeoutMs) && runtime.timeoutMs > 0 && runtime.timeoutMs <= 120_000),
-      'INVALID_RUNTIME', 'Timeout must be between 1 and 120000 milliseconds.');
+    checkTimeout(runtime);
     invariant(runtime.maxPages === undefined || (Number.isInteger(runtime.maxPages) && runtime.maxPages > 0 && runtime.maxPages <= 1000),
       'INVALID_RUNTIME', 'maxPages must be between 1 and 1000.');
     invariant(runtime.maxDownloadBytes === undefined || (Number.isSafeInteger(runtime.maxDownloadBytes) && runtime.maxDownloadBytes > 0),
@@ -126,7 +125,7 @@ export class AssinafyClient {
       const { data: rows, headers } = await this.envelope<T[]>('GET', path,
         { query: { ...query, page, 'per-page': 50 } });
       invariant(Array.isArray(rows), 'INVALID_RESPONSE', 'Assinafy did not return a list.');
-      for (const row of rows) invariant(record(row) && (typeof row.id === 'string' ? /^[A-Za-z0-9_-]{1,128}$/.test(row.id) :
+      for (const row of rows) invariant(record(row) && (typeof row.id === 'string' ? ID_PATTERN.test(row.id) :
         Number.isSafeInteger(row.id) && Number(row.id) > 0), 'INVALID_RESPONSE', 'A list entry has no valid identifier.');
       const rawPages = headers.get('x-pagination-page-count');
       const pages = rawPages === null ? undefined : Number(rawPages);
@@ -197,6 +196,10 @@ export class AssinafyClient {
     }
     throw new IntegrationError('REDIRECT_BLOCKED', 'Too many file-download redirects.');
   }
+}
+export function checkTimeout(runtime: Runtime): void {
+  invariant(runtime.timeoutMs === undefined || (Number.isInteger(runtime.timeoutMs) && runtime.timeoutMs > 0 && runtime.timeoutMs <= 120_000),
+    'INVALID_RUNTIME', 'Timeout must be between 1 and 120000 milliseconds.');
 }
 function validateExternalOrigin(origin: string): void {
   let url: URL;

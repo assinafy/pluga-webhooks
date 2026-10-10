@@ -55,7 +55,7 @@ test('a misleading successful save is detected', async () => {
 test('webhook model yields stable deduplication key and document ID, without private payload fields', () => {
   const actual = normalizeEvent({ ...event, future_field: true, payload: { signer_email: 'private@example.com' } }, 'workspace_example');
   assert.equal(actual.deduplication_key, 'workspace_example:10001'); assert.equal(actual.document_id, 'document_example');
-  assert.equal(actual.status, 'ready'); assert.equal(JSON.stringify(actual).includes('private'), false);
+  assert.equal(actual.status, 'certificated'); assert.equal(JSON.stringify(actual).includes('private'), false);
   assert.deepEqual(normalizeEvent(event, 'workspace_example'), actual);
 });
 test('webhook rejects wrong workspace, malformed timestamps and missing document identifiers', () => {

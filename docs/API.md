@@ -47,7 +47,7 @@ const created = await client.upload(await client.accountPath('/documents'), form
 const bytes = await client.binary(`/documents/${created.id}/download/original`);
 ```
 
-A resposta do upload é um Document, inicialmente em processamento. O download retorna os bytes, sem envelope JSON. Escolha o artefato pela disponibilidade em `document.artifacts`.
+A resposta do upload é um Document, inicialmente em processamento. O download retorna os bytes, sem envelope JSON. Escolha o artefato pela disponibilidade em `document.artifacts`: `original`, `certificated`, `certificate-page`, `pades` ou `bundle` em `/documents/DOCUMENT_ID/download/ARTEFATO`; `thumbnail` em `/documents/DOCUMENT_ID/thumbnail`, como JPEG.
 
 ## Ações e listas
 
@@ -74,7 +74,7 @@ A resposta do upload é um Document, inicialmente em processamento. O download r
 | `registerWebhookEndpoint(client, input)` | Consulta catálogo/lista, depois POST `/accounts/ACCOUNT_ID/webhooks/endpoints` | WebhookEndpoint; reutiliza URL idêntica ou preserva endpoints de outras integrações |
 | `updateWebhookEndpoint(client, endpointId, input)` | PUT `/accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID`; somente campos enviados | WebhookEndpoint atualizado |
 | `deleteWebhookEndpoint(client, endpointId)` | DELETE no endpoint selecionado | `void`; envelope HTTP contém `data: []` |
-| `getWebhookSecret(client, endpointId, rotate?)` | GET `.../secret`; com `rotate: true`, POST `.../secret/rotate` | String `whsec_...`; API key obrigatória no servidor |
+| `getWebhookSecret(client, endpointId, rotate?)` | GET `.../secret`; com `rotate: true`, POST `.../secret/rotate` | String `whsec_...`; API key obrigatória no servidor; HTTP 400 quando a assinatura está desativada |
 | `verifyWebhookSignature(rawBody, headers, secret, now?)` | Nenhuma; corpo UTF-8 original e objeto Headers | Promise void se válida; HMAC-SHA256 e janela de ±300 s |
 | `normalizeEvent(input, accountId, webhookId?)` | Nenhuma; objeto já autenticado, ID do workspace e header opcional | Evento reduzido descrito abaixo |
 
@@ -90,7 +90,7 @@ O helper legado exige `is_active: true` e configuração completa; alteração d
   "event": "document_ready",
   "created_at": 1791028800,
   "document_id": "DOCUMENT_ID",
-  "status": "ready"
+  "status": "certificated"
 }
 ```
 

@@ -191,7 +191,7 @@ if (current.status === 'certificated') {
 }
 ```
 
-`ready` pode aparecer antes de `certificated`. Consulte estado e artefatos até estarem disponíveis. Os artefatos incluem `original`, `thumbnail`, `certificated`, `certificate-page`, `bundle` e, quando aplicável, `pades`, que preserva as assinaturas ICP-Brasil dos signatários. URLs de artefatos exigem autenticação; não são links públicos.
+Depois da última assinatura, o documento passa de `pending_signature` para `certificating` e depois `certificated`; `GET /documents/statuses` lista todos os estados. Consulte estado e artefatos até estarem disponíveis. `document.artifacts` sempre traz `original`, traz `thumbnail` quando a miniatura existe e, após a certificação, `certificated`, `certificate-page`, `bundle` e, com signatários `DigitalCertificate`, `pades`, que preserva as assinaturas ICP-Brasil. Baixe esses arquivos em `/documents/DOCUMENT_ID/download/ARTEFATO`; a miniatura JPEG usa `/documents/DOCUMENT_ID/thumbnail`. URLs de artefatos exigem autenticação; não são links públicos.
 
 Downloads têm limite padrão de 50 MiB. Redirects externos exigem origens HTTPS em `trustedDownloadOrigins` e recebem a requisição sem API key/token. Esse parâmetro é configuração do deployment, sem controle pelo usuário final.
 

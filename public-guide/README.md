@@ -79,7 +79,7 @@ Troque também o e-mail pelo responsável por receber os avisos da inscrição. 
     "id": "document_example",
     "account_id": "workspace_example",
     "name": "Teste Pluga.pdf",
-    "status": "ready"
+    "status": "certificated"
   },
   "payload": {},
   "origin": null,
