@@ -1,247 +1,257 @@
-# Como integrar a Assinafy com a Pluga
+# Assinafy + Pluga
 
-![Assinafy](assets/assinafy-logo.svg)
+Integre o ciclo de documentos da Assinafy com **Pluga Webhooks + HTTP Request**. O kit inclui receitas JSON, cliente TypeScript sem dependências de execução, API key, OAuth2 com PKCE, configuração de endpoints e verificação de webhooks assinados.
 
-Receba eventos de assinatura da Assinafy na Pluga e use a API para consultar documentos, criar signatários e enviar documentos a partir de modelos. Este guia usa **Pluga Webhooks + HTTP Request**, com chave de API e ID do workspace.
+As receitas são instruções para configurar requisições manualmente. O código TypeScript executa no seu servidor ou processo Node.js; colar uma receita não instala esse código dentro da Pluga. Um conector nativo e a listagem no programa de parceiros dependem da aprovação da Pluga.
 
-**Modalidade:** configuração manual via Webhooks. Candidatura ao programa de parceiros enviada em 4 de outubro de 2026, aguardando avaliação da Pluga. Isso não equivale à aprovação ou à disponibilidade de um conector nativo da Assinafy na Pluga.
+## Instalação e ambientes
 
-## Antes de começar
+Use **Node.js 24 LTS**. Node.js 22 LTS também é suportado. TypeScript 7 é uma dependência de desenvolvimento; TypeScript não possui uma política de LTS equivalente à do Node.js.
 
-- Uma conta na [Assinafy](https://app.assinafy.com.br), uma chave de API e acesso ao workspace escolhido.
-- Uma conta na [Pluga](https://manage.pluga.co) com os recursos necessários. **HTTP Request é um recurso Premium**; confirme as condições do seu plano antes de ativar o fluxo.
-- Para enviar assinaturas, um documento já enviado à Assinafy ou um modelo pronto, além dos signatários e papéis correspondentes.
-- Um destinatário sob seu controle para o teste. Os exemplos deste guia usam dados fictícios.
+```sh
+npm ci
+npm run check
+npm run contract
+```
 
-O fluxo não exige servidor adicional, cliente OAuth ou serviço de callback. Cada cliente informa sua própria chave na Pluga. O ID do workspace seleciona o destino; ele não restringe os demais privilégios da chave.
+| Ambiente | API | Aplicação |
+|---|---|---|
+| Sandbox | `https://sandbox.assinafy.com.br/v1` | `https://app-sandbox.assinafy.com.br` |
+| Produção | `https://api.assinafy.com.br/v1` | `https://app.assinafy.com.br` |
 
-## 1. Identifique o workspace
+Credenciais e registros pertencem ao ambiente escolhido. Forneça os valores por variáveis de ambiente ou arquivo ignorado com permissões restritas. Os scripts exigem `ASSINAFY_ENVIRONMENT` explícito; o construtor mantém produção como padrão para clientes existentes.
 
-Na Assinafy, crie ou selecione a chave nas configurações da conta. Na Pluga, configure uma requisição de teste:
+```js
+import { AssinafyClient, runAction, loadOptions } from './dist/index.js';
 
-| Campo | Valor |
-|---|---|
-| Método | `GET` |
-| URL | `https://api.assinafy.com.br/v1/accounts` |
-| Header | `X-Api-Key`: sua chave |
-| Header | `Accept`: `application/json` |
-| Basic Auth | Vazio |
+const client = new AssinafyClient({
+  type: 'api_key',
+  apiKey: process.env.ASSINAFY_API_KEY,
+  accountId: process.env.ASSINAFY_ACCOUNT_ID,
+  environment: 'sandbox',
+});
+await client.workspace();
+```
 
-Na resposta, encontre o workspace pelo nome e copie seu `id` em `data[]`. Nos exemplos abaixo, substitua `ACCOUNT_ID` por esse valor. Substitua os demais identificadores em maiúsculas pelos registros da sua conta; eles não são variáveis prontas da Pluga.
+Cada cliente confirma acesso ao workspace em `GET /accounts`. O ID selecionado não reduz os privilégios da API key. Para atuar em workspaces de clientes, use OAuth2.
 
-Insira a chave somente nos headers da conexão/requisição. Não use a chave na URL, no corpo de eventos ou em planilhas. O histórico da Pluga pode exibir headers em texto: limite o acesso às automações e não compartilhe screenshots ou logs que contenham a chave.
+## Fluxo completo de documento
 
-## 2. Crie o receptor na Pluga
+```mermaid
+flowchart TD
+  A[Conectar e escolher workspace] --> B[Criar ou reutilizar signatários]
+  B --> C{Origem do documento}
+  C --> D[Modelo pronto: criar e solicitar assinatura]
+  C --> E[Upload multipart de PDF]
+  E --> F[Consultar processamento e páginas]
+  F --> G[Solicitar assinatura virtual ou collect]
+  D --> H[Verificar identidade e assinar]
+  G --> H
+  H --> I[Receber e verificar webhook]
+  I --> J[Consultar documento autenticado]
+  J --> K[Aguardar certificated e baixar artefatos]
+  K --> L[Atualizar destino pelo ID do documento]
+```
 
-1. Clique em **Criar automatização**.
-2. Selecione **Webhooks → Notificação recebida** como origem.
-3. Use **Conectar nova conta** para gerar a URL de recepção. Copie essa URL e mantenha-a privada.
-4. Configure o modelo de dados usando o [evento fictício document_ready](examples/document-ready.json), ou capture um evento de teste da sua conta.
-5. Adicione filtros para `account_id` igual ao seu workspace, `object.type` igual a `Document` e `event` igual a `document_ready`.
+### 1. Conecte a Pluga
 
-![Confirmação da conexão Webhooks no construtor da Pluga](images/conexao-pluga.png)
-
-*Tela real da conexão usada no teste. A captura mostra uma ação Webhooks simples; para ações com listas de signatários, use HTTP Request no modo JSON conforme o passo 5.*
-
-O evento `document_ready` informa que todas as assinaturas foram concluídas. Para acompanhar cada assinatura individual, use `signer_signed_document` em um fluxo separado.
-
-## 3. Configure o webhook na Assinafy
-
-Na área de Webhooks do workspace, informe a URL privada gerada pela Pluga, selecione os eventos desejados e ative a inscrição. Se preferir configurar pela API, siga esta sequência, uma única vez na instalação:
-
-1. Consulte `GET /accounts/ACCOUNT_ID/webhooks/subscriptions`.
-2. Se já existir uma inscrição, confirme com o responsável como preservá-la: há uma inscrição por workspace. Não substitua a URL de outra integração. Para testes, use um workspace dedicado.
-3. Consulte os nomes disponíveis em `GET /webhooks/event-types`.
-4. Configure `PUT /accounts/ACCOUNT_ID/webhooks/subscriptions` com os headers `X-Api-Key`, `Accept: application/json` e `Content-Type: application/json` e este corpo:
+Selecione **HTTP Request → Enviar uma mensagem via HTTP Request → Preencher campos com um JSON**. Esse modo preserva listas e objetos. Configure os headers:
 
 ```json
 {
-  "url": "https://example.com/substitua-pela-url-privada-da-pluga",
-  "email": "operacoes@example.com",
-  "events": ["document_ready", "signer_signed_document"],
-  "is_active": true
-}
-```
-
-Troque também o e-mail pelo responsável por receber os avisos da inscrição. Não inclua essa requisição de configuração em cada execução da automação.
-
-### Modelo de evento
-
-```json
-{
-  "id": 10001,
-  "event": "document_ready",
-  "account_id": "workspace_example",
-  "created_at": 1791028800,
-  "message": "Evento fictício para configuração do modelo na Pluga",
-  "object": {
-    "type": "Document",
-    "id": "document_example",
-    "account_id": "workspace_example",
-    "name": "Teste Pluga.pdf",
-    "status": "ready"
-  },
-  "payload": {},
-  "origin": null,
-  "subject": {"type": "Account", "id": "workspace_example"}
-}
-```
-
-Use **`object.id`** como ID do documento. O `id` superior identifica a atividade. Campos adicionais podem aparecer. Eventos reais podem conter dados pessoais em `subject`; mapeie apenas os campos necessários para o destino.
-
-## 4. Confirme o estado na API antes de atualizar o destino
-
-Adicione uma consulta HTTP autenticada:
-
-```text
-GET https://api.assinafy.com.br/v1/documents/DOCUMENT_ID?expand=assignment
-X-Api-Key: SUA_CHAVE
-Accept: application/json
-```
-
-No campo da URL, insira o **campo dinâmico `object.id`** do gatilho no lugar de `DOCUMENT_ID`. Confirme que o `data.account_id` retornado é o seu workspace e use o `data.status` consultado para atualizar o destino.
-
-O envelope da API guarda o registro em `data`. Algumas ações da Pluga adicionam outro nível `data` ao resultado: escolha os campos a partir da resposta que o teste da ação efetivamente mostrar.
-
-A URL privada do receptor e o filtro de workspace não equivalem a uma assinatura criptográfica do evento. A consulta autenticada confirma o documento e seu estado atual. Não autorize operações usando apenas os dados recebidos pelo webhook.
-
-`document_ready` pode chegar antes de o PDF certificado estar disponível. Para baixar o arquivo final, aguarde o estado `certificated` e a disponibilidade do artefato. Os endpoints de download exigem autenticação; não são links públicos para compartilhar.
-
-### Três possibilidades de destino
-
-- **Google Sheets:** inserir/atualizar uma linha com o ID do documento, nome e estado consultado. Use uma chave estável por documento para encontrar a mesma linha.
-- **Pipedrive:** atualizar o negócio associado ao documento quando todas as assinaturas forem concluídas. Mantenha a associação entre os dois IDs no seu processo.
-- **Trello:** mover o card associado ao documento para a lista de contratos assinados após confirmar o estado na API.
-
-Esses são exemplos de uso propostos. Os testes descritos abaixo validaram o trecho Assinafy ↔ Pluga; as ações nas contas desses três destinos precisam ser configuradas e testadas pelo cliente.
-
-## 5. Envie documentos a partir da Pluga
-
-Para chamadas com listas como `signers`, selecione **HTTP Request → Enviar uma mensagem via HTTP Request**. Em **Tipo de preenchimento dos campos da requisição**, escolha **Preencher campos com um JSON**.
-
-Configure **Cabeçalhos (JSON)**:
-
-```json
-{
-  "X-Api-Key": "SUA_CHAVE",
+  "X-Api-Key": "<ASSINAFY_API_KEY>",
   "Accept": "application/json",
   "Content-Type": "application/json"
 }
 ```
 
-Cole o objeto inteiro em **Corpo da requisição (JSON)**. Não cole uma lista como texto dentro de um campo simples: `signers` deve permanecer um array de objetos.
+Para OAuth, substitua `X-Api-Key` por `Authorization: Bearer <ASSINAFY_ACCESS_TOKEN>`. A conexão responsável por OAuth deve executar consentimento e renovação; um header colado manualmente expira. Confira o suporte da modalidade Pluga contratada.
 
-### Criar signatário
+Consulte `GET /accounts` e copie `data[].id` do workspace escolhido. A API responde com `{ "status": 200, "message": "", "data": ... }`. O cliente retorna `data`; a Pluga pode acrescentar outra camada. Selecione os campos pelo resultado do teste da ação.
 
-```text
-POST https://api.assinafy.com.br/v1/accounts/ACCOUNT_ID/signers
-```
+### 2. Crie ou reutilize os signatários
 
-```json
-{
-  "full_name": "Signatário de teste",
-  "email": "signatario@example.com"
-}
-```
-
-Substitua o e-mail por um destinatário autorizado. Guarde o `data.id` retornado. Criar um signatário não envia um convite; se ele já existir, reutilize seu ID após consultar a lista de signatários do workspace.
-
-### Criar e enviar documento de um modelo
-
-Consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo pronto e identifique seus papéis de assinatura. Cada papel não-editor deve receber um signatário.
-
-```text
-POST https://api.assinafy.com.br/v1/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents
-```
+Consulte `GET /accounts/ACCOUNT_ID/signers` antes de criar contatos novamente. Para `POST /accounts/ACCOUNT_ID/signers`:
 
 ```json
 {
-  "name": "Contrato de teste",
-  "signers": [
-    {
-      "id": "SIGNER_ID",
-      "role_id": "ROLE_ID",
-      "verification_method": "Email",
-      "notification_methods": ["Email"]
-    }
-  ]
+  "full_name": "Signatário de exemplo",
+  "email": "signer@example.com",
+  "government_id": "390.533.447-05"
 }
 ```
 
-Se houver campos do editor no modelo, inclua `editor_fields: [{"field_id":"FIELD_ID","value":"VALOR"}]`. Remova essa propriedade quando não houver campos a preencher.
+Os dados são fictícios. Use destinatários autorizados. `government_id` é opcional para Email/WhatsApp; a API aceita CPF ou CNPJ, inclusive CNPJ alfanumérico, e normaliza a formatação. WhatsApp usa `whatsapp_phone_number` em E.164. Criar o contato não envia convite.
 
-**A chamada cria o documento e inicia o fluxo de assinatura.** Confira destinatários e papéis no teste antes de ativar a automação.
-
-### Solicitar assinatura de um documento existente
-
-Primeiro consulte o documento com `expand=assignment`. Confirme workspace, estado compatível e ausência de uma solicitação existente.
-
-```text
-POST https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/assignments
+```js
+const signer = await runAction('create_signer', client, {
+  body: { full_name: 'Signatário de exemplo', email: 'signer@example.com' },
+});
+// Guarde signer.id na operação de origem.
 ```
+
+### 3. Prepare o documento
+
+**Modelo existente:** consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo `ready` e mapeie cada papel não-editor exatamente uma vez. Preencha campos do editor pelos IDs do próprio modelo.
+
+```js
+const roles = await loadOptions('template_roles', client, templateId);
+const sent = await runAction('create_document_from_template', client, {
+  template_id: templateId,
+  body: {
+    name: 'Contrato de exemplo',
+    signers: [{ id: signer.id, role_id: roles[0].value, verification_method: 'Email' }],
+  },
+});
+```
+
+**Essa chamada cria e envia o documento para assinatura.** O exemplo pressupõe um modelo com um único papel e nenhum campo do editor obrigatório. Mapeie todos os papéis e acrescente `editor_fields` quando necessário.
+
+**PDF existente:** no cliente local, envie bytes por multipart. O transporte define o boundary; não informe `Content-Type` manualmente.
+
+```js
+const form = new FormData();
+form.set('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'contrato.pdf');
+const uploaded = await client.upload(await client.accountPath('/documents'), form);
+const document = await runAction('get_document', client, { document_id: uploaded.id });
+```
+
+Acompanhe `uploaded → metadata_processing → metadata_ready`. `virtual` aceita esses três estados e aguarda processamento; `collect` exige `metadata_ready`, páginas do documento e campos posicionados em pixels do raster a 150 DPI. Consulte novamente após um intervalo e trate `document_processing_failed` como falha.
+
+Upload/download binários estão disponíveis no cliente local. O caminho demonstrado na Pluga começa com documento/modelo já disponível na Assinafy; confirme o suporte equivalente a multipart/binário no construtor da Pluga.
+
+### 4. Solicite a assinatura
+
+Para documento existente, `POST /documents/DOCUMENT_ID/assignments`:
 
 ```json
 {
   "method": "virtual",
-  "signers": [
-    {
-      "id": "SIGNER_ID",
-      "verification_method": "Email",
-      "notification_methods": ["Email"]
-    }
-  ]
+  "signers": [{
+    "id": "SIGNER_ID",
+    "verification_method": "Email",
+    "notification_methods": ["Email"],
+    "step": 1
+  }],
+  "message": "Confira o documento antes de assinar.",
+  "copy_receivers": ["COPY_RECEIVER_ID"]
 }
 ```
 
-O modo `virtual` foi testado para documentos existentes. O envio por modelo foi testado com campo de assinatura posicionado no próprio modelo. O upload binário de PDF diretamente pela Pluga não está incluído neste caminho validado; prepare o documento/modelo na Assinafy antes da automação.
+`message`, `copy_receivers`, `expires_at` e `step` são opcionais. Expiração exige ISO 8601 com fuso, pelo menos uma hora à frente. Informe `step` para todos os signatários ou nenhum, com sequência contínua a partir de 1. Signatários do mesmo passo assinam em paralelo. O cliente bloqueia documentos com assignment existente para evitar novo convite.
 
-## 6. Evite efeitos duplicados
+| Verificação | Notificação | Requisitos |
+|---|---|---|
+| `Email` | `Email` | Contato com e-mail |
+| `Whatsapp` | `Whatsapp` | Número E.164; recurso do plano e créditos |
+| `DigitalCertificate` | `Email` ou `Whatsapp` | CPF/CNPJ, recurso de certificado digital, ICP-Brasil A1/A3; um signatário por passo |
 
-Eventos podem ser entregues novamente ou fora de ordem. O fluxo validado de recepção faz uma consulta GET; repetir essa leitura não cria documentos nem convites.
+`notification_methods` aceita exatamente um canal. Se um lado for omitido, a API infere o outro; se ambos forem omitidos, usa Email. A1/A3 são certificados usados pelo signatário via Web PKI; o código enviado à API é `DigitalCertificate`. Consulte os endpoints de estimativa de custo da [API](https://api.assinafy.com.br/v1/docs) antes de envios que consumam créditos.
 
-- Para atualizar registros existentes, use o ID do documento como chave de correspondência no destino e consulte sempre o estado atual. Configure e teste a ação de atualização, em vez de acrescentar um novo registro a cada entrega.
-- Para ações que não podem se repetir, registre `account_id + ":" + id` do evento em armazenamento persistente, com reserva atômica antes da ação e estados de processamento/conclusão. Marque a conclusão somente depois de confirmar o resultado; resultado incerto exige reconciliação.
-- Para criações iniciadas em CRM/planilha, use o ID único da operação de origem, persista o ID do documento resultante e impeça duas execuções simultâneas da mesma operação. Uma consulta seguida de criação sem controle de concorrência não garante isso.
-- Não presuma deduplicação automática da Pluga ou suporte a um header `Idempotency-Key` da Assinafy. Essas garantias não foram demonstradas neste fluxo. Se o produtor/destino não oferecer o controle necessário, mantenha as criações sob execução supervisionada até implementá-lo.
-- Em timeout ou HTTP 5xx depois de uma criação/envio, verifique primeiro se o documento ou convite já existe. Não repita o POST automaticamente nem use o reprocessamento em massa antes dessa conferência.
+### 5. Receba e verifique os eventos
 
-Esse controle persistente depende do produtor/destino escolhido e não é instalado por este guia. A publicação do tutorial não ativa automações de escrita na conta do cliente.
+Crie **Webhooks → Notificação recebida** na Pluga e copie a URL privada. Consulte `GET /accounts/ACCOUNT_ID/webhooks/endpoints` e cadastre um endpoint próprio com `POST` no mesmo caminho:
 
-## 7. Teste antes de ativar
+```json
+{
+  "name": "Pluga",
+  "url": "https://receiver.example.com/substitua-pela-url-da-pluga",
+  "email": "ops@example.com",
+  "events": ["document_ready", "signer_signed_document", "signer_rejected_document", "document_processing_failed"],
+  "is_active": true,
+  "signing_enabled": true
+}
+```
 
-1. Use workspace e destinatário de teste.
-2. Confirme HTTP 200 na consulta autenticada e o workspace correto.
-3. Faça um envio controlado, conclua a assinatura e confira o documento na Assinafy.
-4. Confira a entrega em `GET /accounts/ACCOUNT_ID/webhooks` (`delivered` e `http_status`).
-5. Confira o histórico da automação Pluga e o resultado da ação de destino. Um HTTP 200 no receptor não comprova que todas as etapas seguintes terminaram.
-6. Repita o mesmo evento e confirme o comportamento esperado para duplicatas antes de ativar efeitos de escrita.
+Há um endpoint no plano gratuito e até três nos planos pagos. Cada um possui URL, eventos e assinatura próprios. Use uma URL distinta para cada integração. `/webhooks/subscriptions` continua funcionando e atua no endpoint mais antigo; os helpers legados preservam uma configuração existente diferente.
 
-![Dois testes de ações HTTP Request JSON concluídos com sucesso na Pluga](images/testes-http-json.png)
+Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Obtenha o segredo por API key em `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`; essa operação não aceita OAuth. Guarde o segredo somente no receptor.
 
-**Validação de 4 de outubro de 2026:** os fluxos de documento existente → solicitação de assinatura e modelo → criação/envio terminaram com documentos assinados e certificados. Foram confirmadas 13 entregas reais/replay de webhook com HTTP 200, 15 execuções bem-sucedidas do receptor (incluindo dois testes iniciais), duas ações HTTP JSON e 53 testes locais.
+```js
+import { verifyWebhookSignature, normalizeEvent } from './dist/index.js';
 
-PDFs e ZIPs finais foram baixados e conferidos diretamente pela API, fora da Pluga. WhatsApp, certificado digital do signatário, recusa e múltiplos signatários não foram exercitados nesses testes de produção. Os fluxos de escrita de teste foram desativados ao concluir.
+const rawBody = await request.text(); // Antes de qualquer parser JSON.
+await verifyWebhookSignature(rawBody, request.headers, webhookSecret);
+const event = normalizeEvent(JSON.parse(rawBody), accountId, request.headers.get('webhook-id'));
+```
 
-## Erros comuns
+O helper verifica HMAC-SHA256 usando Web Crypto, aceita entradas `v1` do padrão Standard Webhooks e rejeita timestamps fora de cinco minutos. Não serialize novamente o JSON antes de verificar. `normalizeEvent` filtra workspace e calcula uma chave estável; armazene-a persistentemente antes de efeitos duplicáveis. O helper não mantém esse armazenamento.
 
-| Resposta | O que conferir |
+Se a modalidade Pluga não permitir verificar corpo/headers, use seu receptor para verificar antes de encaminhar os campos necessários à Pluga. Habilitar assinatura no envio não implementa a verificação no destino. Mantenha a URL privada e confirme o documento por GET autenticado.
+
+O ID superior `id` identifica a atividade; `object.id` identifica o documento. O [exemplo fictício](examples/document-ready.json) mostra o envelope. `document_ready` indica que todos assinaram; `signer_signed_document` indica uma assinatura individual. Eventos podem se repetir e chegar fora de ordem. Cada endpoint recebe independentemente, com até duas tentativas e intervalo de três segundos. Consulte entregas em `GET /accounts/ACCOUNT_ID/webhooks`.
+
+### 6. Confirme o estado e obtenha o arquivo
+
+```js
+const current = await runAction('get_document', client, { document_id: event.document_id });
+if (current.status === 'certificated') {
+  const pdf = await client.binary(`/documents/${current.id}/download/certificated`);
+  // Salve os bytes no destino autorizado.
+}
+```
+
+`ready` pode aparecer antes de `certificated`. Consulte estado e artefatos até estarem disponíveis. Os artefatos incluem `original`, `thumbnail`, `certificated`, `certificate-page`, `bundle` e, quando aplicável, `pades`, que preserva as assinaturas ICP-Brasil dos signatários. URLs de artefatos exigem autenticação; não são links públicos.
+
+Downloads têm limite padrão de 50 MiB. Redirects externos exigem origens HTTPS em `trustedDownloadOrigins` e recebem a requisição sem API key/token. Esse parâmetro é configuração do deployment, sem controle pelo usuário final.
+
+### 7. Atualize o destino e recupere falhas
+
+Associe documento e registro de origem por ID. Atualize a linha, negócio ou card existente pelo estado consultado. Reserve atomicamente a chave do evento em armazenamento persistente antes de ações duplicáveis. Para criar documentos, reserve o ID da operação de origem e persista o ID retornado. Uma consulta seguida de POST não impede execuções simultâneas.
+
+| Situação | Tratamento |
 |---|---|
-| 400 / 422 | Campos obrigatórios, papéis do modelo e arrays JSON |
-| 401 | Chave de API e header `X-Api-Key` |
-| 403 | Permissões da conta e workspace |
-| 429 | Limite de requisições e `Retry-After` |
-| Timeout / 5xx após escrita | Resultado já criado antes de repetir a operação |
+| 400 / 422 | Corrigir campos, papéis, canais ou geometria |
+| 401 | Reconectar; OAuth exige renovação controlada |
+| 403 | Conferir workspace, escopos e recursos do plano |
+| 429 | Respeitar `Retry-After` |
+| Timeout / 5xx após escrita | Conferir se o efeito ocorreu antes de replay |
+| Evento repetido | Usar reserva persistente e consultar estado atual |
 
-## Referências e arquivos
+O cliente não repete requisições automaticamente. `IntegrationError` informa `code`, `httpStatus`, `safeToRetry`, `outcomeUnknown` e `retryAfterSeconds`, sem expor corpos upstream. Resultado desconhecido de escrita exige reconciliação.
 
-- [Documentação da API Assinafy](https://api.assinafy.com.br/v1/docs)
-- [Receitas de requisição](examples/requests.json) — ficha de configuração manual, não um arquivo de importação da Pluga.
-- [JSON fictício do webhook](examples/document-ready.json)
-- [Logo SVG](assets/assinafy-logo.svg) e [logo PNG](assets/assinafy-logo.png)
-- [Pluga Webhooks: configuração oficial](https://pluga.zendesk.com/hc/pt-br/articles/360007678434-Pluga-Webhooks-Como-criar-automatiza%C3%A7%C3%B5es-com-ferramentas-n%C3%A3o-integradas-%C3%A0-Pluga)
-- [HTTP Request na Pluga](https://pluga.co/ferramentas/http-request/integracao/)
-- Destinos propostos: [Google Sheets](https://pluga.co/ferramentas/google-sheets/integracao/), [Pipedrive](https://pluga.co/ferramentas/pipedrive/integracao/) e [Trello](https://pluga.co/ferramentas/trello/integracao/).
+## OAuth2 para contas de clientes
 
-Guia mantido pela Assinafy. Atualizado em 4 de outubro de 2026.
+Registre a aplicação em **Integrações → Apps OAuth**. Use confidential no servidor que guarda segredo ou public em dispositivo/browser. Cadastre a URI HTTPS exata. O fluxo OAuth 2.1 authorization code exige PKCE:
 
-Contato: [contato@assinafy.com.br](mailto:contato@assinafy.com.br).
+```js
+import { createOAuthAuthorization, exchangeOAuthCode, refreshOAuthToken, revokeOAuthToken } from './dist/index.js';
+
+const application = { clientId, clientSecret, environment: 'production' };
+const session = await createOAuthAuthorization({
+  ...application,
+  redirectUri: 'https://app.example.com/oauth/callback',
+  scopes: ['account:read', 'documents:read', 'documents:write', 'templates:read'],
+});
+// Guarde session no servidor, vinculada à sessão do usuário; redirecione para session.url.
+const tokens = await exchangeOAuthCode(session, callbackUrl, clientSecret);
+// Consuma a sessão uma vez e guarde tokens com acesso restrito.
+```
+
+O helper valida callback, `state`, `iss` e PKCE antes de trocar o código. Tokens são JSON simples, fora de `data`. Um token pertence a um workspace. Consulte `GET /accounts` com Bearer e guarde `data[0].id` junto à conexão; leia os escopos recebidos em `scope`.
+
+Access tokens duram uma hora. Para receber refresh token, registre e solicite `offline_access`. Execute um refresh por vez por conexão; cada refresh invalida o anterior. Persista o novo token antes de usá-lo. Timeout não autoriza repetir o token antigo. Ao desconectar, chame `revokeOAuthToken(application, token)` com o client que o emitiu.
+
+| Operação | Escopos usados |
+|---|---|
+| Workspace, inscrição e lista de endpoints | `account:read` |
+| Documentos, contatos, campos, catálogo/histórico de eventos | `documents:read` |
+| Criar documento/signatário e solicitar assinatura | `documents:write` e leitura para os preflights |
+| Modelos e papéis | `templates:read` |
+| Criar/alterar/excluir endpoints | `webhooks:write` e leitura usada no setup |
+| Renovação em segundo plano | `offline_access` durante consentimento |
+
+Seu servidor mantém sessões, armazenamento de tokens e exclusão mútua no refresh. Esses helpers não instalam um conector nativo Pluga nem implementam login OIDC. Um [Cloudflare Quick Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) fornece callback HTTPS temporário para desenvolvimento; use endereço estável em produção.
+
+## Referência e operação
+
+- [Todas as funções e payloads](docs/API.md)
+- [Configuração manual na Pluga](docs/SETUP.md)
+- [Execução dos testes](docs/TESTING.md)
+- [Guia público](public-guide/README.md)
+- [Receitas JSON](recipes/requests.json)
+- [Documentação oficial](https://api.assinafy.com.br/v1/docs)
+
+`npm run smoke` faz somente leituras. Forneça exatamente uma de `ASSINAFY_API_KEY` ou `ASSINAFY_ACCESS_TOKEN`, mais `ASSINAFY_ACCOUNT_ID` e `ASSINAFY_ENVIRONMENT`. `ASSINAFY_DOCUMENT_ID` habilita consulta de documento específico. O script imprime apenas um resumo.
+
+Credenciais, artefatos e arquivos locais `AGENTS.md`/`CLAUDE.md` são ignorados pelo Git. Exemplos publicados usam domínios reservados para dados fictícios. Nunca coloque segredos em URLs, eventos, receitas compartilhadas ou screenshots.

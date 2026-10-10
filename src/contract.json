@@ -1,0 +1,2540 @@
+{
+  "source": "https://api.assinafy.com.br/v1/docs/openapi.json",
+  "retrieved": "2026-10-09",
+  "actions": {
+    "create_signer": {
+      "name": "Create Signer",
+      "method": "POST",
+      "path": "/accounts/{accountId}/signers",
+      "input": {
+        "required": [
+          "full_name"
+        ],
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "example": "John Dove"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "signer@example.com"
+          },
+          "whatsapp_phone_number": {
+            "description": "E.164; normalized on save.",
+            "type": "string",
+            "example": "+5548999990000"
+          },
+          "government_id": {
+            "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save.",
+            "type": "string",
+            "example": "390.533.447-05"
+          }
+        },
+        "type": "object"
+      },
+      "response": "Signer",
+      "output": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Signer"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "get_document": {
+      "name": "Get Document",
+      "method": "GET",
+      "path": "/documents/{documentId}",
+      "input": {
+        "type": "object",
+        "properties": {}
+      },
+      "response": "Document",
+      "output": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Document"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "create_document_from_template": {
+      "name": "Create Document From Template",
+      "method": "POST",
+      "path": "/accounts/{accountId}/templates/{templateId}/documents",
+      "input": {
+        "required": [
+          "signers"
+        ],
+        "properties": {
+          "signers": {
+            "description": "One entry per template role.",
+            "type": "array",
+            "items": {
+              "required": [
+                "role_id",
+                "id"
+              ],
+              "properties": {
+                "role_id": {
+                  "description": "The template role ID associated with the signer.",
+                  "type": "string",
+                  "example": "fa8c14f32d732271e071998246e"
+                },
+                "id": {
+                  "description": "The signer ID. The signer must already exist in the account.",
+                  "type": "string",
+                  "example": "fa8c140cb49b79f940aab95fddd"
+                },
+                "verification_method": {
+                  "description": "Verification method for this signer. If provided without notification_methods, the notification method is inferred. Defaults to Email. `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id` (a CPF requires that person's certificate; a CNPJ requires an e-CNPJ for that company), must be alone in its signing step, and is charged 0.5 credits per signer. Only applies to signers (not copy receivers).",
+                  "type": "string",
+                  "enum": [
+                    "Email",
+                    "Whatsapp",
+                    "DigitalCertificate"
+                  ],
+                  "example": "Email"
+                },
+                "notification_methods": {
+                  "description": "Notification method codes for this signer. If provided without verification_method, the verification method is inferred. Defaults to Email. Only one method allowed per signer.",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "Email"
+                  ]
+                },
+                "step": {
+                  "description": "Positive integer that controls signing order. Signers sharing the same step sign in parallel; a step activates only after every signer in the previous step has signed. If supplied for any role it must be supplied for all, forming a contiguous sequence starting at 1. Copy receivers ignore this field.",
+                  "type": "integer",
+                  "example": 1
+                }
+              },
+              "type": "object"
+            }
+          },
+          "editor_fields": {
+            "description": "Editor field values to bake into the generated document.",
+            "type": "array",
+            "items": {
+              "required": [
+                "field_id",
+                "value"
+              ],
+              "properties": {
+                "field_id": {
+                  "description": "The field identifier, matching the field_id in the template data.",
+                  "type": "string",
+                  "example": "fa8c14f3af99d2846d1789de4ba"
+                },
+                "value": {
+                  "description": "The value to assign to the field.",
+                  "type": "string",
+                  "example": "Field value"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "name": {
+            "description": "Title for the document. Defaults to the template name.",
+            "type": "string",
+            "example": "sample-contract-one-page.pdf"
+          },
+          "message": {
+            "description": "Optional message sent to signers.",
+            "type": "string",
+            "example": "Message to the signers"
+          },
+          "expires_at": {
+            "description": "Assignment expiration date (ISO 8601). No expiration by default. Must be at least one hour in the future.",
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-07-30T23:59:00Z"
+          },
+          "tags": {
+            "description": "Tag names to attach to the new document. Names that don't exist are auto-created. The template's default-document-tags are always applied; values here are merged on top (duplicates removed).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "response": "Document",
+      "output": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Document"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "request_signatures": {
+      "name": "Request Signatures",
+      "method": "POST",
+      "path": "/documents/{documentId}/assignments",
+      "input": {
+        "required": [
+          "method",
+          "signers"
+        ],
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "virtual",
+              "collect"
+            ],
+            "example": "virtual"
+          },
+          "signers": {
+            "type": "array",
+            "items": {
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "example": "615605f50e968054a5b7c9b8"
+                },
+                "verification_method": {
+                  "description": "How the signer's identity is verified before signing. `Email` (default) sends a one-time code to the signer's email; `Whatsapp` sends the code over WhatsApp — the verification itself is not billed, but it requires the WhatsApp notification channel, so the signer costs 0.45 credits (available only on paid subscriptions); `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate (A1/A3) — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id`, must be alone in its signing step, and is charged 0.5 credits per signer. A CPF requires that person's certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires an e-CNPJ for that company, from any of its representatives. Omit to default to `Email`.",
+                  "type": "string",
+                  "enum": [
+                    "Email",
+                    "Whatsapp",
+                    "DigitalCertificate"
+                  ],
+                  "example": "Email"
+                },
+                "notification_methods": {
+                  "description": "How the signer is told a signature is being requested. **Exactly one method per signer** — the array shape is historical, and sending two returns `400`. The method must also be compatible with `verification_method`: `Email` verification takes `Email`, `Whatsapp` verification takes `Whatsapp`, and `DigitalCertificate` takes either. WhatsApp incurs an additional cost and is available only on paid subscriptions. Omit it to have it inferred from `verification_method`, or `{\"Email\"}` when neither is sent. See **Verification & Notification Methods** for the full pairing table.",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "Email",
+                      "Whatsapp"
+                    ]
+                  },
+                  "example": [
+                    "Email"
+                  ]
+                },
+                "step": {
+                  "type": "integer",
+                  "example": 1
+                }
+              },
+              "type": "object"
+            }
+          },
+          "entries": {
+            "description": "Required for `collect`: field placements per page.",
+            "type": "array",
+            "items": {
+              "properties": {
+                "page_id": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "properties": {
+                      "signer_id": {
+                        "type": "string"
+                      },
+                      "field_id": {
+                        "type": "string"
+                      },
+                      "display_settings": {
+                        "$ref": "#/components/schemas/DisplaySettings"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              },
+              "type": "object"
+            }
+          },
+          "message": {
+            "description": "Text included in the invitation email.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "ISO 8601; default is no expiration. Must be at least one hour in the future.",
+            "type": "string",
+            "format": "date-time"
+          },
+          "copy_receivers": {
+            "description": "Signer IDs that only receive a copy.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "type": "object"
+      },
+      "response": "Assignment",
+      "output": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Assignment"
+              }
+            },
+            "type": "object"
+          }
+        ]
+      }
+    }
+  },
+  "schemas": {
+    "DisplaySettings": {
+      "description": "A field placement rectangle on a document page. Geometry values are pixels in Assinafy's 150-DPI page image, measured from the upper-left corner. Clients must keep the rectangle within the selected page's width and height; the API does not clamp out-of-bounds values.",
+      "required": [
+        "left",
+        "top",
+        "width",
+        "height",
+        "fontSize"
+      ],
+      "properties": {
+        "left": {
+          "description": "Horizontal distance from the page's left edge, in page-image pixels.",
+          "type": "number",
+          "format": "float",
+          "minimum": 0,
+          "example": 69
+        },
+        "top": {
+          "description": "Vertical distance from the page's top edge, in page-image pixels.",
+          "type": "number",
+          "format": "float",
+          "minimum": 0,
+          "example": 282
+        },
+        "width": {
+          "description": "Width of the placement rectangle, in page-image pixels.",
+          "type": "number",
+          "format": "float",
+          "exclusiveMinimum": 0,
+          "example": 421
+        },
+        "height": {
+          "description": "Height of the placement rectangle, in page-image pixels.",
+          "type": "number",
+          "format": "float",
+          "exclusiveMinimum": 0,
+          "example": 45.86
+        },
+        "fontFamily": {
+          "description": "Font-family presentation metadata.",
+          "type": "string",
+          "example": "Arial"
+        },
+        "fontSize": {
+          "description": "Font size in the 150-DPI page-image coordinate system.",
+          "type": "number",
+          "format": "float",
+          "exclusiveMinimum": 0,
+          "example": 22
+        },
+        "backgroundColor": {
+          "description": "CSS-compatible background-color presentation metadata.",
+          "type": "string",
+          "example": "#D5EBFF"
+        }
+      },
+      "type": "object"
+    },
+    "Account": {
+      "description": "A workspace account (organization).",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "example": "account"
+        },
+        "id": {
+          "type": "string",
+          "example": "6401df46d6a6b0c692d9ec49"
+        },
+        "name": {
+          "type": "string",
+          "example": "Acme Inc."
+        },
+        "primary_color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "aabbcc"
+        },
+        "secondary_color": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "112233"
+        },
+        "notification_sender_type": {
+          "type": "string",
+          "enum": [
+            "User",
+            "Account"
+          ],
+          "example": "User"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "example": [
+            "owner"
+          ]
+        },
+        "is_delete_allowed": {
+          "type": "boolean",
+          "example": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-06-03T03:54:16Z"
+        }
+      },
+      "type": "object"
+    },
+    "Template": {
+      "description": "A reusable document template.",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "example": "template"
+        },
+        "id": {
+          "type": "string",
+          "example": "fa88b732db84d01427d4cdd1092"
+        },
+        "name": {
+          "type": "string",
+          "example": "template.pdf"
+        },
+        "document_name": {
+          "description": "Default name for documents created from this template.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Default invitation message.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "One of uploading, uploaded, processing, ready, failed.",
+          "type": "string",
+          "example": "ready"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TemplatePage"
+          }
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TemplateRole"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "default_document_tags": {
+          "description": "Applied to documents created from this template; only returned by the single-template endpoint.",
+          "type": "array",
+          "items": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "type": "object"
+    },
+    "TemplateRole": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "example": "Editor"
+        },
+        "assignment_type": {
+          "type": "string",
+          "example": "Editor"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "type": "object"
+    },
+    "TemplatePage": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer",
+          "example": 1
+        },
+        "height": {
+          "type": "integer",
+          "example": 2100
+        },
+        "width": {
+          "type": "integer",
+          "example": 1275
+        },
+        "download_url": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/TemplateFieldPlacement"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "TemplateFieldPlacement": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "field_id": {
+          "type": "string"
+        },
+        "role_id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "display_settings": {
+          "description": "Rendering metadata for the placement."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "type": "object"
+    },
+    "Assignment": {
+      "description": "A request for signers to sign a document.",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "example": "assignment"
+        },
+        "id": {
+          "type": "string",
+          "example": "615606ef81d199996981dbce"
+        },
+        "sender_email": {
+          "type": "string",
+          "format": "email",
+          "example": "sender@example.com"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "virtual",
+            "collect"
+          ],
+          "example": "virtual"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": null
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AssignmentSigner"
+          }
+        },
+        "copy_receivers": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/AssignmentItem"
+          }
+        },
+        "summary": {
+          "$ref": "#/components/schemas/AssignmentSummary"
+        },
+        "signing_urls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SigningUrl"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "SigningUrl": {
+      "properties": {
+        "signer_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "example": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.com"
+        }
+      },
+      "type": "object"
+    },
+    "AssignmentSummary": {
+      "properties": {
+        "signer_count": {
+          "type": "integer"
+        },
+        "completed_count": {
+          "type": "integer"
+        },
+        "signers": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "AssignmentItem": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "page": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/DocumentPage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signer": {
+          "description": "Signer responsible for this item.",
+          "type": "object"
+        },
+        "field": {
+          "description": "Field definition associated with the item.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "display_settings": {
+          "description": "Rendering metadata for the item. Collect items use the DisplaySettings schema; virtual and legacy items may return an empty or non-object value."
+        },
+        "value": {
+          "description": "Captured value when completed; `null` until then."
+        },
+        "completed": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "DocumentPage": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "example": "615601faf166d6d1d8e7dc30"
+        },
+        "number": {
+          "type": "integer",
+          "example": 1
+        },
+        "height": {
+          "type": "integer",
+          "example": 2100
+        },
+        "width": {
+          "type": "integer",
+          "example": 1275
+        },
+        "download_url": {
+          "type": "string",
+          "example": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+        }
+      },
+      "type": "object"
+    },
+    "AssignmentSigner": {
+      "description": "A signer within an assignment: the base Signer plus per-assignment verification/notification details.",
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/components/schemas/Signer"
+        },
+        {
+          "properties": {
+            "verification_method": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "Email"
+            },
+            "notification_methods": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "example": [
+                "Email"
+              ]
+            },
+            "step": {
+              "description": "Sequential signing step (defaults to 1).",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "example": 1
+            },
+            "notified": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "completed": {
+              "description": "Only present in account-owner contexts.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "notification_history": {
+              "description": "Per-channel delivery history for this signer (email + WhatsApp), most-recent send order.",
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/components/schemas/NotificationHistoryEntry"
+              }
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
+    "NotificationHistoryEntry": {
+      "description": "A single notification delivery record for a signer channel.",
+      "properties": {
+        "event": {
+          "type": "string",
+          "example": "signature_request"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "sent",
+            "failed"
+          ],
+          "example": "sent"
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sent_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": "2026-07-07T12:00:00Z"
+        },
+        "failed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": null
+        }
+      },
+      "type": "object"
+    },
+    "Signer": {
+      "description": "A signing party belonging to a workspace account.",
+      "properties": {
+        "resource": {
+          "description": "Present in single-resource responses.",
+          "type": "string",
+          "example": "signer"
+        },
+        "id": {
+          "type": "string",
+          "example": "62d6ee35c7741ca4006b9e11"
+        },
+        "full_name": {
+          "type": "string",
+          "example": "John Signer"
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "email",
+          "example": "signer@example.com"
+        },
+        "whatsapp_phone_number": {
+          "description": "E.164 format; normalized on save.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "+5548999990000"
+        },
+        "government_id": {
+          "description": "Signer's normalized CPF (11 digits) or CNPJ (14 characters; may be alphanumeric).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "39053344705"
+        },
+        "has_accepted_terms": {
+          "type": "boolean",
+          "example": false
+        }
+      },
+      "type": "object"
+    },
+    "Document": {
+      "description": "A document and its current lifecycle state.",
+      "properties": {
+        "resource": {
+          "description": "Present in single-resource responses.",
+          "type": "string",
+          "example": "document"
+        },
+        "id": {
+          "type": "string",
+          "example": "615601fab04c0a3147bb1246"
+        },
+        "account_id": {
+          "type": "string",
+          "example": "d199996981dbd199996981db"
+        },
+        "template_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": null
+        },
+        "name": {
+          "type": "string",
+          "example": "document.pdf"
+        },
+        "status": {
+          "description": "Status code — see GET /v1/documents/statuses.",
+          "type": "string",
+          "example": "metadata_ready"
+        },
+        "artifacts": {
+          "description": "Artifact download URLs keyed by name. Always `original`, plus `thumbnail` once one exists. A certificated document also carries `certificated`, `certificate-page` and `bundle`, and `pades` when it was signed with a digital certificate — the PAdES version holds the signers' ICP-Brasil signatures, which certification flattens out of the certificated PDF.",
+          "type": "object",
+          "example": {
+            "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+          }
+        },
+        "is_closed": {
+          "type": "boolean",
+          "example": false
+        },
+        "signing_url": {
+          "type": "string",
+          "example": "https://api.assinafy.com.br/v1/sign/doc1"
+        },
+        "decline_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": null
+        },
+        "declined_by": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/Signer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "assignment": {
+          "description": "Expanded assignment data when included via ?expand=assignment; null otherwise.",
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/Assignment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/DocumentPage"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-06-03T03:54:16Z"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-06-03T03:54:16Z"
+        }
+      },
+      "type": "object"
+    },
+    "WebhookEndpoint": {
+      "description": "A URL that receives the account's webhook events. Every active endpoint subscribed to an event receives it.",
+      "properties": {
+        "id": {
+          "description": "Endpoint ID.",
+          "type": "string",
+          "example": "65f1c2a9b3e4d5f60718293a4b5c6d7e"
+        },
+        "name": {
+          "description": "Label to tell endpoints apart.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "ERP"
+        },
+        "url": {
+          "description": "URL that receives the events (http or https).",
+          "type": "string",
+          "format": "uri",
+          "example": "https://example.com/webhooks/assinafy"
+        },
+        "email": {
+          "description": "Contact email for delivery-failure notices.",
+          "type": "string",
+          "format": "email",
+          "example": "ops@example.com"
+        },
+        "events": {
+          "description": "Event types delivered to this endpoint (see **List webhook event types**).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "example": [
+            "document_ready",
+            "signer_signed_document"
+          ]
+        },
+        "is_active": {
+          "description": "Whether events are delivered to this endpoint.",
+          "type": "boolean",
+          "example": true
+        },
+        "signing_enabled": {
+          "description": "Whether deliveries carry a `webhook-signature` header (see **Webhook Payloads → Verifying signatures**).",
+          "type": "boolean",
+          "example": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-10-01T12:00:00Z"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-10-01T12:00:00Z"
+        }
+      },
+      "type": "object"
+    },
+    "WebhookEndpointSecret": {
+      "description": "An endpoint's signing secret.",
+      "properties": {
+        "secret": {
+          "description": "Standard Webhooks secret: `whsec_` followed by the base64-encoded key.",
+          "type": "string",
+          "example": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+        }
+      },
+      "type": "object"
+    },
+    "OAuthTokenRequest": {
+      "description": "Body of `POST /v1/oauth/token`. Sent form-encoded per RFC 6749, or as JSON.",
+      "required": [
+        "grant_type",
+        "client_id"
+      ],
+      "properties": {
+        "grant_type": {
+          "description": "`urn:ietf:params:oauth:grant-type:token-exchange` is for internal service clients only (Assinafy's own MCP server) — an ordinary confidential or public client authenticates with it and always gets `invalid_client`, exactly as an unrecognized client would. Everyday integrators use `authorization_code` and `refresh_token`.",
+          "type": "string",
+          "enum": [
+            "authorization_code",
+            "refresh_token",
+            "urn:ietf:params:oauth:grant-type:token-exchange"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "redirect_uri": {
+          "type": "string",
+          "format": "uri"
+        },
+        "code_verifier": {
+          "description": "RFC 7636: 43-128 characters from [A-Za-z0-9-._~]. Shorter values are rejected with `invalid_grant`.",
+          "type": "string"
+        },
+        "refresh_token": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string"
+        },
+        "client_secret": {
+          "description": "Confidential clients only. Public clients authenticate with PKCE and are never issued a secret; the token-exchange grant requires a confidential, internal-service client and therefore always requires this.",
+          "type": "string"
+        },
+        "resource": {
+          "description": "RFC 8707 resource indicator. For `authorization_code`/`refresh_token`, optional; when present it must be the `resource` value published by /.well-known/oauth-protected-resource and must match the one sent to /authorize, otherwise `invalid_target`. For the token-exchange grant it is REQUIRED and must equal this API's own resource identifier exactly (never a front-end resource such as the MCP server), otherwise `invalid_target`.",
+          "type": "string",
+          "format": "uri"
+        },
+        "subject_token": {
+          "description": "Token-exchange grant only. The front-end resource's access token being traded in. Must be a live, original (never itself exchanged) token minted for a resource this server issues tokens for, other than this API's own audience.",
+          "type": "string"
+        },
+        "subject_token_type": {
+          "description": "Token-exchange grant only. Required; only `urn:ietf:params:oauth:token-type:access_token` is supported.",
+          "type": "string",
+          "enum": [
+            "urn:ietf:params:oauth:token-type:access_token"
+          ]
+        },
+        "requested_token_type": {
+          "description": "Token-exchange grant only. Optional; when present it must agree with the only type this server issues.",
+          "type": "string",
+          "enum": [
+            "urn:ietf:params:oauth:token-type:access_token"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "OAuthRevokeRequest": {
+      "description": "Body of `POST /v1/oauth/revoke`. Sent form-encoded per RFC 7009, or as JSON.",
+      "required": [
+        "token",
+        "client_id"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "token_type_hint": {
+          "type": "string",
+          "enum": [
+            "access_token",
+            "refresh_token"
+          ]
+        },
+        "client_id": {
+          "type": "string"
+        },
+        "client_secret": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Envelope": {
+      "description": "Standard success wrapper. Operations add their own `data`.",
+      "properties": {
+        "status": {
+          "description": "HTTP status code, mirrored in the body.",
+          "type": "integer",
+          "example": 200
+        },
+        "message": {
+          "description": "Human-readable message; empty on success.",
+          "type": "string",
+          "example": ""
+        }
+      },
+      "type": "object"
+    },
+    "Field": {
+      "description": "A reusable field definition.",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "example": "field"
+        },
+        "id": {
+          "type": "string",
+          "example": "6152120297080d55bdd13197"
+        },
+        "name": {
+          "type": "string",
+          "example": "Signature"
+        },
+        "type": {
+          "type": "string",
+          "example": "signature"
+        },
+        "regex": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "is_pre_defined": {
+          "type": "boolean"
+        },
+        "is_active": {
+          "type": "boolean"
+        },
+        "is_required": {
+          "type": "boolean"
+        },
+        "is_standard": {
+          "type": "boolean"
+        },
+        "is_read_only": {
+          "type": "boolean"
+        },
+        "is_visible": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "WebhookSubscription": {
+      "description": "An account's webhook subscription configuration.",
+      "properties": {
+        "events": {
+          "description": "Event types subscribed for delivery.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "example": [
+            "document_ready",
+            "document_prepared"
+          ]
+        },
+        "is_active": {
+          "description": "Whether webhook delivery is active.",
+          "type": "boolean",
+          "example": true
+        },
+        "url": {
+          "description": "Webhook endpoint URL.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "http://example.com?test=1"
+        },
+        "email": {
+          "description": "Contact email for delivery notices.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "email@example.com"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": "2023-05-10T14:58:24Z"
+        }
+      },
+      "type": "object"
+    },
+    "WebhookEventType": {
+      "description": "A subscribable webhook event type.",
+      "properties": {
+        "id": {
+          "description": "Event type code.",
+          "type": "string",
+          "example": "document_ready"
+        },
+        "description": {
+          "description": "When the event is triggered.",
+          "type": "string",
+          "example": "Triggered when the last Signer of the assignment signs the Document."
+        }
+      },
+      "type": "object"
+    },
+    "WebhookDispatch": {
+      "description": "A single webhook delivery-history entry.",
+      "properties": {
+        "resource": {
+          "description": "Always `activity_dispatching_history` in single-resource responses.",
+          "type": "string",
+          "example": "activity_dispatching_history"
+        },
+        "id": {
+          "description": "Dispatch entry ID.",
+          "type": "string",
+          "example": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+        },
+        "event": {
+          "description": "Event type that triggered the dispatch.",
+          "type": "string",
+          "example": "document_ready"
+        },
+        "activity_id": {
+          "description": "Internal activity ID associated with the dispatch.",
+          "type": "integer",
+          "example": 456
+        },
+        "endpoint_id": {
+          "description": "ID of the webhook endpoint the delivery was sent to (`null` once that endpoint is deleted).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "65f1c2a9b3e4d5f60718293a4b5c6d7e"
+        },
+        "endpoint": {
+          "description": "URL that received the request.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "https://example.com/webhook"
+        },
+        "payload": {
+          "description": "JSON payload sent to the endpoint.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "delivered": {
+          "description": "Whether delivery succeeded.",
+          "type": "boolean",
+          "example": true
+        },
+        "http_status": {
+          "description": "HTTP status returned (null if connection failed).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "example": 200
+        },
+        "response_body": {
+          "description": "Endpoint response body, truncated to 2000 chars.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "OK"
+        },
+        "error": {
+          "description": "Delivery error message, if any.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": null
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2024-01-15T10:30:00Z"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2024-01-15T10:30:00Z"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "webhookSubscriptionInput": {
+    "required": [
+      "events",
+      "is_active",
+      "url",
+      "email"
+    ],
+    "properties": {
+      "events": {
+        "description": "Event type codes to subscribe to (see `GET /v1/webhooks/event-types`).",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "example": [
+          "document_ready",
+          "document_prepared"
+        ]
+      },
+      "is_active": {
+        "description": "Whether events should be delivered to the webhook.",
+        "type": "boolean",
+        "example": true
+      },
+      "url": {
+        "description": "The URL that will receive events.",
+        "type": "string",
+        "format": "uri",
+        "example": "http://example.com?test=1"
+      },
+      "email": {
+        "description": "Email that receives important webhook-communication notices.",
+        "type": "string",
+        "format": "email",
+        "example": "email@example.com"
+      }
+    },
+    "type": "object"
+  },
+  "webhookEndpointInput": {
+    "required": [
+      "url",
+      "email",
+      "events"
+    ],
+    "properties": {
+      "url": {
+        "description": "URL that receives the events (http or https).",
+        "type": "string",
+        "format": "uri",
+        "example": "https://example.com/webhooks/assinafy"
+      },
+      "email": {
+        "description": "Contact email for delivery-failure notices.",
+        "type": "string",
+        "format": "email",
+        "example": "ops@example.com"
+      },
+      "events": {
+        "description": "Event types to deliver (see `GET /v1/webhooks/event-types`).",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "example": [
+          "document_ready",
+          "signer_signed_document"
+        ]
+      },
+      "name": {
+        "description": "Label to tell endpoints apart.",
+        "type": "string",
+        "example": "ERP"
+      },
+      "is_active": {
+        "description": "Whether events are delivered. Defaults to `true`.",
+        "type": "boolean",
+        "example": true
+      },
+      "signing_enabled": {
+        "description": "Sign deliveries with a Standard Webhooks signature. Defaults to `false`.",
+        "type": "boolean",
+        "example": true
+      }
+    },
+    "type": "object"
+  },
+  "webhookEndpointUpdateInput": {
+    "properties": {
+      "url": {
+        "type": "string",
+        "format": "uri",
+        "example": "https://example.com/webhooks/assinafy"
+      },
+      "email": {
+        "type": "string",
+        "format": "email",
+        "example": "ops@example.com"
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "example": [
+          "document_ready"
+        ]
+      },
+      "name": {
+        "type": "string",
+        "example": "ERP"
+      },
+      "is_active": {
+        "type": "boolean",
+        "example": false
+      },
+      "signing_enabled": {
+        "type": "boolean",
+        "example": true
+      }
+    },
+    "type": "object"
+  },
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/accounts",
+      "requestBody": null,
+      "response": {
+        "description": "The user's accounts",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Account"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "example": "Acme Inc."
+                },
+                "notification_sender_type": {
+                  "description": "Who signers see as the notification sender for documents in this account. `User` (default) shows the document owner's name; `Account` shows this account's name.",
+                  "type": "string",
+                  "enum": [
+                    "User",
+                    "Account"
+                  ],
+                  "example": "Account"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created account",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Account"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/documents",
+      "requestBody": null,
+      "response": {
+        "description": "A page of documents",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Document"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/documents",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "multipart/form-data": {
+            "schema": {
+              "required": [
+                "file"
+              ],
+              "properties": {
+                "file": {
+                  "description": "The PDF file to upload.",
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created document",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Document"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/documents/{documentId}/download/{artifactName}",
+      "requestBody": null,
+      "response": {
+        "description": "The artifact binary",
+        "content": {
+          "application/pdf": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/fields",
+      "requestBody": null,
+      "response": {
+        "description": "Field definitions",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Field"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/fields",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "example": "Full name"
+                },
+                "type": {
+                  "type": "string",
+                  "example": "text"
+                },
+                "regex": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "is_required": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created field",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Field"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/token",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/x-www-form-urlencoded": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthTokenRequest"
+            }
+          },
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthTokenRequest"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The token response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "access_token": {
+                  "type": "string"
+                },
+                "issued_token_type": {
+                  "description": "Present only for the token-exchange grant, per RFC 8693 §2.2.1.",
+                  "type": "string",
+                  "example": "urn:ietf:params:oauth:token-type:access_token"
+                },
+                "token_type": {
+                  "type": "string",
+                  "example": "Bearer"
+                },
+                "expires_in": {
+                  "description": "For the token-exchange grant, clamped to the subject token's own remaining lifetime as well as the exchanged-token TTL — never longer than either.",
+                  "type": "integer",
+                  "example": 3600
+                },
+                "refresh_token": {
+                  "description": "Present only when the `offline_access` scope was requested AND consented on the authorization_code/refresh_token grants. Never present for the token-exchange grant. Without it a client must send the user through the authorization flow again once the access token expires.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scope": {
+                  "description": "The scope of the ACCESS token. `offline_access` is a request-time signal rather than a permission, so it never appears here even when it was requested.",
+                  "type": "string",
+                  "example": "documents:read"
+                },
+                "id_token": {
+                  "description": "A signed OIDC id_token (RS256). Present only when the openid scope was granted.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/revoke",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/x-www-form-urlencoded": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthRevokeRequest"
+            }
+          },
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OAuthRevokeRequest"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "Revoked"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/signers",
+      "requestBody": null,
+      "response": {
+        "description": "A page of signers",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Signer"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/signers",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "full_name"
+              ],
+              "properties": {
+                "full_name": {
+                  "type": "string",
+                  "example": "John Dove"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "example": "signer@example.com"
+                },
+                "whatsapp_phone_number": {
+                  "description": "E.164; normalized on save.",
+                  "type": "string",
+                  "example": "+5548999990000"
+                },
+                "government_id": {
+                  "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save.",
+                  "type": "string",
+                  "example": "390.533.447-05"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created signer",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Signer"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/templates",
+      "requestBody": null,
+      "response": {
+        "description": "A page of templates (default_document_tags omitted in the list)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Template"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/webhooks/subscriptions",
+      "requestBody": null,
+      "response": {
+        "description": "The subscription",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookSubscription"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{accountId}/webhooks/subscriptions",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "events",
+                "is_active",
+                "url",
+                "email"
+              ],
+              "properties": {
+                "events": {
+                  "description": "Event type codes to subscribe to (see `GET /v1/webhooks/event-types`).",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "document_ready",
+                    "document_prepared"
+                  ]
+                },
+                "is_active": {
+                  "description": "Whether events should be delivered to the webhook.",
+                  "type": "boolean",
+                  "example": true
+                },
+                "url": {
+                  "description": "The URL that will receive events.",
+                  "type": "string",
+                  "format": "uri",
+                  "example": "http://example.com?test=1"
+                },
+                "email": {
+                  "description": "Email that receives important webhook-communication notices.",
+                  "type": "string",
+                  "format": "email",
+                  "example": "email@example.com"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The updated subscription",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookSubscription"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{accountId}/webhooks/inactivate",
+      "requestBody": null,
+      "response": {
+        "description": "The inactivated subscription",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookSubscription"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/webhooks/event-types",
+      "requestBody": null,
+      "response": {
+        "description": "Event types",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookEventType"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/webhooks/{historyId}/retry",
+      "requestBody": null,
+      "response": {
+        "description": "The new dispatch entry",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookDispatch"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/webhooks/endpoints",
+      "requestBody": null,
+      "response": {
+        "description": "The endpoints",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookEndpoint"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/webhooks/endpoints",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "url",
+                "email",
+                "events"
+              ],
+              "properties": {
+                "url": {
+                  "description": "URL that receives the events (http or https).",
+                  "type": "string",
+                  "format": "uri",
+                  "example": "https://example.com/webhooks/assinafy"
+                },
+                "email": {
+                  "description": "Contact email for delivery-failure notices.",
+                  "type": "string",
+                  "format": "email",
+                  "example": "ops@example.com"
+                },
+                "events": {
+                  "description": "Event types to deliver (see `GET /v1/webhooks/event-types`).",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "document_ready",
+                    "signer_signed_document"
+                  ]
+                },
+                "name": {
+                  "description": "Label to tell endpoints apart.",
+                  "type": "string",
+                  "example": "ERP"
+                },
+                "is_active": {
+                  "description": "Whether events are delivered. Defaults to `true`.",
+                  "type": "boolean",
+                  "example": true
+                },
+                "signing_enabled": {
+                  "description": "Sign deliveries with a Standard Webhooks signature. Defaults to `false`.",
+                  "type": "boolean",
+                  "example": true
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created endpoint",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookEndpoint"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}",
+      "requestBody": null,
+      "response": {
+        "description": "The endpoint",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookEndpoint"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "example": "https://example.com/webhooks/assinafy"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "example": "ops@example.com"
+                },
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "document_ready"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "example": "ERP"
+                },
+                "is_active": {
+                  "type": "boolean",
+                  "example": false
+                },
+                "signing_enabled": {
+                  "type": "boolean",
+                  "example": true
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The updated endpoint",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookEndpoint"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}",
+      "requestBody": null,
+      "response": {
+        "description": "Endpoint deleted",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": [],
+                      "example": []
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret",
+      "requestBody": null,
+      "response": {
+        "description": "The secret",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookEndpointSecret"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate",
+      "requestBody": null,
+      "response": {
+        "description": "The new secret",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookEndpointSecret"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/webhooks",
+      "requestBody": null,
+      "response": {
+        "description": "Delivery history",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookDispatch"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

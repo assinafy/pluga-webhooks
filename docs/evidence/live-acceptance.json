@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-04",
+  "environment": "production",
+  "source": "Assinafy API and Pluga execution history",
+  "local_tests_passed": 53,
+  "pluga_receiver_successful_runs": 15,
+  "pluga_http_request_successful_runs": 2,
+  "all_13_webhook_deliveries_http_200": true,
+  "events": {
+    "document_ready": 2,
+    "signer_signed_document": 2,
+    "assignment_created": 2,
+    "signature_requested": 2,
+    "document_metadata_ready": 3,
+    "document_uploaded": 2
+  },
+  "workflows": [
+    {
+      "workflow": "uploaded_pdf_virtual",
+      "status": "certificated",
+      "method": "virtual",
+      "one_expected_signer": true,
+      "email_configuration": true,
+      "completed": true,
+      "signer_notified": true
+    },
+    {
+      "workflow": "template_collect",
+      "status": "certificated",
+      "method": "collect",
+      "one_expected_signer": true,
+      "email_configuration": true,
+      "completed": true,
+      "signer_notified": true
+    }
+  ],
+  "download_checks": [
+    {
+      "kind": "certificated",
+      "bytes": 213064,
+      "file_signature_valid": true
+    },
+    {
+      "kind": "certificate-page",
+      "bytes": 150103,
+      "file_signature_valid": true
+    },
+    {
+      "kind": "bundle",
+      "bytes": 292043,
+      "file_signature_valid": true
+    },
+    {
+      "kind": "certificated",
+      "bytes": 238606,
+      "file_signature_valid": true
+    },
+    {
+      "kind": "certificate-page",
+      "bytes": 150740,
+      "file_signature_valid": true
+    },
+    {
+      "kind": "bundle",
+      "bytes": 316829,
+      "file_signature_valid": true
+    }
+  ],
+  "file_validation": [
+    {
+      "file": "uploaded-certificated.pdf",
+      "pages": 4,
+      "parse_ok": true,
+      "test_text_present": true
+    },
+    {
+      "file": "template-certificated.pdf",
+      "pages": 4,
+      "parse_ok": true,
+      "test_text_present": true
+    },
+    {
+      "file": "uploaded-certificate-page.pdf",
+      "pages": 3,
+      "parse_ok": true,
+      "test_text_present": null
+    },
+    {
+      "file": "template-certificate-page.pdf",
+      "pages": 3,
+      "parse_ok": true,
+      "test_text_present": null
+    },
+    {
+      "file": "uploaded-bundle.zip",
+      "entries": 3,
+      "crc_ok": true,
+      "pdf_entries": 3
+    },
+    {
+      "file": "template-bundle.zip",
+      "entries": 3,
+      "crc_ok": true,
+      "pdf_entries": 2
+    }
+  ],
+  "write_test_automations_active": false,
+  "receiver_active": true,
+  "native_pluga_multipart_verified": false,
+  "persistent_deduplication_implemented": false,
+  "catalog_submitted": true,
+  "submission_date": "2026-10-04",
+  "submission_channel": "Pluga Webhooks partner application",
+  "catalog_approved": false
+}

@@ -1,0 +1,34 @@
+{
+  "form_url": "https://tally.so/r/wkG6b6",
+  "tool_name": "Assinafy",
+  "website": "https://www.assinafy.com.br",
+  "use_cases": "1. Google Sheets: quando todas as assinaturas de um documento forem concluídas na Assinafy (evento document_ready), receber o webhook na Pluga, consultar o documento pela API e inserir/atualizar a linha correspondente com ID, nome e status. A associação por ID evita acrescentar uma linha a cada repetição do evento.\n\n2. Pipedrive: quando o documento de um negócio for assinado, receber document_ready, confirmar o estado atual na API Assinafy e atualizar o negócio associado, permitindo que o time comercial acompanhe a conclusão do contrato.\n\n3. Trello: quando o contrato associado a um card tiver todas as assinaturas concluídas, receber document_ready, consultar o documento e mover o card para a lista de contratos assinados.\n\nSão propostas de casos de uso; as ações finais nas contas desses destinos dependem da configuração e do teste do cliente. O trecho Assinafy ↔ Pluga já foi validado em produção: recebimento de eventos, consulta autenticada, criação de signatário, solicitação de assinatura de PDF existente e criação/envio por modelo. Os dois documentos de teste foram assinados e certificados.\n\nPara ações com arrays, utilizamos HTTP Request (Premium), no modo Preencher campos com um JSON. A autenticação é X-Api-Key por cliente, com ID do workspace. Não há OAuth nesta modalidade. Upload multipart de PDF pela Pluga não está sendo anunciado; os fluxos começam com documento/modelo existente na Assinafy. As medidas para reexecuções e duplicatas estão documentadas no guia.",
+  "webhook_ready": true,
+  "sample_event": {
+    "id": 10001,
+    "event": "document_ready",
+    "account_id": "workspace_example",
+    "created_at": 1791028800,
+    "message": "Evento fictício para configuração do modelo na Pluga",
+    "object": {
+      "type": "Document",
+      "id": "document_example",
+      "account_id": "workspace_example",
+      "name": "Teste Pluga.pdf",
+      "status": "ready"
+    },
+    "payload": {},
+    "origin": null,
+    "subject": {"type": "Account", "id": "workspace_example"}
+  },
+  "guide": "Sim. Guia em português com passo a passo, screenshots reais, JSON fictício, receitas HTTP e resultados de testes: https://github.com/assinafy/pluga-webhooks\n\nDocumentação da API: https://api.assinafy.com.br/v1/docs\nLogo SVG: https://raw.githubusercontent.com/assinafy/pluga-webhooks/main/assets/assinafy-logo.svg\nLogo PNG: https://raw.githubusercontent.com/assinafy/pluga-webhooks/main/assets/assinafy-logo.png\n\nO material já está publicado. Podemos adaptar o tutorial ao formato editorial da Central de Ajuda da Pluga.",
+  "guide_provided": true,
+  "benefit_rating": 5,
+  "promotion": "Sim, temos interesse em avaliar ações conjuntas: tutorial de configuração para a Central de Ajuda, uma demonstração curta dos fluxos de assinatura e divulgação do material nos canais oficiais da Assinafy. Podemos também avaliar um conteúdo ou webinar em parceria sobre assinatura eletrônica integrada a CRM e planilhas. Formato, calendário, canais e alcance serão combinados com a equipe da Pluga, sem compromisso de investimento em mídia ou acesso às bases de clientes nesta candidatura.",
+  "contact_email": "contact@example.com",
+  "submitted": true,
+  "submitted_date": "2026-10-04",
+  "confirmation": "Formulário enviado — Obrigado por completar este formulário!",
+  "status": "awaiting_pluga_review",
+  "receipt": "evidence/pluga-submission-confirmed.png"
+}

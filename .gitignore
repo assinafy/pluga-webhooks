@@ -1,0 +1,14 @@
+node_modules/
+dist/
+artifacts/
+.secrets/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+*.pdf
+*.zip
+.DS_Store
+AGENTS.md
+CLAUDE.md

@@ -1,0 +1,17 @@
+{
+  "id": 10001,
+  "event": "document_ready",
+  "account_id": "workspace_example",
+  "created_at": 1791028800,
+  "message": "Evento fictício para configuração do modelo na Pluga",
+  "object": {
+    "type": "Document",
+    "id": "document_example",
+    "account_id": "workspace_example",
+    "name": "Teste Pluga.pdf",
+    "status": "ready"
+  },
+  "payload": {},
+  "origin": null,
+  "subject": { "type": "Account", "id": "workspace_example" }
+}

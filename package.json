@@ -1,0 +1,30 @@
+{
+  "name": "@assinafy/pluga-webhooks",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Assinafy document workflows, OAuth2 and signed webhooks for Pluga",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "node scripts/lint.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage test/*.test.mjs",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "audit:contract": "node scripts/audit-contract.mjs",
+    "contract": "node scripts/audit-contract.mjs"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
