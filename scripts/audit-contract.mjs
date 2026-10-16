@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import contract from '../src/contract.json' with { type: 'json' };
 import worksheet from '../recipes/requests.json' with { type: 'json' };
 
-function structural(value) {
-  if (Array.isArray(value)) return value.map(structural);
+function structural(value, propertyMap = false) {
+  if (Array.isArray(value)) return value.map(item => structural(item));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !['description', 'summary', 'example', 'examples', 'title'].includes(key))
-    .map(([key, item]) => [key, structural(item)]));
+    .filter(([key]) => propertyMap || !['description', 'summary', 'example', 'examples', 'title'].includes(key))
+    .map(([key, item]) => [key, structural(item, !propertyMap && key === 'properties')]));
   return value;
 }
 try {
@@ -36,8 +36,12 @@ try {
   for (const request of worksheet.requests) {
     assert.ok(spec.paths[`/v1${request.path}`]?.[request.method.toLowerCase()], `Missing request: ${request.id}`);
   }
-  assert.deepEqual(structural(spec.paths['/v1/accounts/{accountId}/webhooks/subscriptions'].put.requestBody.content['application/json'].schema),
-    structural(contract.webhookSubscriptionInput), 'Changed webhook registration input');
+  for (const [name, path, method] of [
+    ['webhookSubscriptionInput', '/v1/accounts/{accountId}/webhooks/subscriptions', 'put'],
+    ['webhookEndpointInput', '/v1/accounts/{accountId}/webhooks/endpoints', 'post'],
+    ['webhookEndpointUpdateInput', '/v1/accounts/{accountId}/webhooks/endpoints/{endpointId}', 'put'],
+  ]) assert.deepEqual(structural(spec.paths[path][method].requestBody.content['application/json'].schema),
+    structural(contract[name]), `Changed webhook input: ${name}`);
   assert.ok(Object.values(spec.components.securitySchemes).some(scheme => scheme.type === 'apiKey' && scheme.in === 'header' && scheme.name === 'X-Api-Key'));
   assert.ok(spec.components.securitySchemes.oauth2.flows.authorizationCode.scopes['webhooks:write']);
   assert.ok(spec.servers.some(server => server.url === 'https://api.assinafy.com.br'));

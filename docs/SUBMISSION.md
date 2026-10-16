@@ -63,14 +63,7 @@ As ações finais nesses três destinos foram apresentadas como propostas a conf
 
 ## Manter o tutorial público
 
-Somente a pasta `public-guide/` é publicada no repositório `assinafy/pluga-webhooks`. O remoto local `publication` aponta para esse repositório; a branch local `main` contém também arquivos internos de teste/submissão e não deve ser enviada a ele.
-
-Após revisar e commitar alterações em `public-guide/`:
-
-```sh
-git subtree split --prefix=public-guide -b public-guide
-git push publication public-guide:main
-```
+O repositório `assinafy/pluga-webhooks` publica o kit TypeScript, as receitas e o guia em `public-guide/`. Os remotos locais `origin` e `publication` apontam para esse mesmo repositório. Publique a branch main e a tag de release preservando o histórico existente, conforme [TESTING.md](TESTING.md#ci-e-release).
 
 Verifique os exemplos JSON, links e screenshots antes de publicar. Não inclua IDs de teste, chaves, URLs privadas, screenshots de logs expandidos nem arquivos de `artifacts/` ou `.secrets/`.
 

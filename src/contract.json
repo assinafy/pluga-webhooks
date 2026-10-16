@@ -1,6 +1,6 @@
 {
   "source": "https://api.assinafy.com.br/v1/docs/openapi.json",
-  "retrieved": "2026-10-09",
+  "retrieved": "2026-10-16",
   "actions": {
     "create_signer": {
       "name": "Create Signer",
@@ -26,7 +26,7 @@
             "example": "+5548999990000"
           },
           "government_id": {
-            "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save.",
+            "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save. Required before the signer can use a verification method that identifies them by CPF.",
             "type": "string",
             "example": "390.533.447-05"
           }
@@ -106,12 +106,13 @@
                   "example": "fa8c140cb49b79f940aab95fddd"
                 },
                 "verification_method": {
-                  "description": "Verification method for this signer. If provided without notification_methods, the notification method is inferred. Defaults to Email. `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id` (a CPF requires that person's certificate; a CNPJ requires an e-CNPJ for that company), must be alone in its signing step, and is charged 0.5 credits per signer. Only applies to signers (not copy receivers).",
+                  "description": "Verification method for this signer. If provided without notification_methods, the notification method is inferred. Defaults to Email. `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id` (a CPF requires that person's certificate; a CNPJ requires an e-CNPJ for that company), must be alone in its signing step, and is charged 0.5 credits per signer. `IdDocumentFaceMatchBasic` verifies the signer from a photo of their government ID, a photo of them holding it and a liveness check — it requires the ID Document + Face Match feature, the signer must have a valid CPF in `government_id`, and is charged a per-signer fee. Only applies to signers (not copy receivers).",
                   "type": "string",
                   "enum": [
                     "Email",
                     "Whatsapp",
-                    "DigitalCertificate"
+                    "DigitalCertificate",
+                    "IdDocumentFaceMatchBasic"
                   ],
                   "example": "Email"
                 },
@@ -231,17 +232,18 @@
                   "example": "615605f50e968054a5b7c9b8"
                 },
                 "verification_method": {
-                  "description": "How the signer's identity is verified before signing. `Email` (default) sends a one-time code to the signer's email; `Whatsapp` sends the code over WhatsApp — the verification itself is not billed, but it requires the WhatsApp notification channel, so the signer costs 0.45 credits (available only on paid subscriptions); `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate (A1/A3) — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id`, must be alone in its signing step, and is charged 0.5 credits per signer. A CPF requires that person's certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires an e-CNPJ for that company, from any of its representatives. Omit to default to `Email`.",
+                  "description": "How the signer's identity is verified before signing. `Email` (default) sends a one-time code to the signer's email; `Whatsapp` sends the code over WhatsApp — the verification itself is not billed, but it requires the WhatsApp notification channel, so the signer costs 0.45 credits (available only on paid subscriptions); `DigitalCertificate` has the signer sign with their own ICP-Brasil certificate (A1/A3) — it requires the Digital Certificate feature, the signer must have a CPF or CNPJ in `government_id`, must be alone in its signing step, and is charged 0.5 credits per signer. A CPF requires that person's certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires an e-CNPJ for that company, from any of its representatives. `IdDocumentFaceMatchBasic` verifies the signer from a photo of their government ID, a photo of them holding it and a liveness check — it requires the ID Document + Face Match feature, the signer must have a valid CPF in `government_id`, and is charged a per-signer fee. Omit to default to `Email`.",
                   "type": "string",
                   "enum": [
                     "Email",
                     "Whatsapp",
-                    "DigitalCertificate"
+                    "DigitalCertificate",
+                    "IdDocumentFaceMatchBasic"
                   ],
                   "example": "Email"
                 },
                 "notification_methods": {
-                  "description": "How the signer is told a signature is being requested. **Exactly one method per signer** — the array shape is historical, and sending two returns `400`. The method must also be compatible with `verification_method`: `Email` verification takes `Email`, `Whatsapp` verification takes `Whatsapp`, and `DigitalCertificate` takes either. WhatsApp incurs an additional cost and is available only on paid subscriptions. Omit it to have it inferred from `verification_method`, or `{\"Email\"}` when neither is sent. See **Verification & Notification Methods** for the full pairing table.",
+                  "description": "How the signer is told a signature is being requested. **Exactly one method per signer** — the array shape is historical, and sending two returns `400`. The method must also be compatible with `verification_method`: `Email` verification takes `Email`, `Whatsapp` verification takes `Whatsapp`, and `DigitalCertificate` and `IdDocumentFaceMatchBasic` take either. WhatsApp incurs an additional cost and is available only on paid subscriptions. Omit it to have it inferred from `verification_method`, or `{\"Email\"}` when neither is sent. See **Verification & Notification Methods** for the full pairing table.",
                   "type": "array",
                   "items": {
                     "type": "string",
@@ -814,6 +816,22 @@
                 "boolean",
                 "null"
               ]
+            },
+            "identity_verification_status": {
+              "description": "Latest identity-document verification status; `InReview` means the account must decide it before the document can be certificated.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "Pending",
+                "InReview",
+                "Approved",
+                "Declined",
+                "Expired",
+                "Abandoned"
+              ],
+              "example": "InReview"
             },
             "completed": {
               "description": "Only present in account-owner contexts.",
@@ -1411,6 +1429,249 @@
         }
       },
       "type": "object"
+    },
+    "SignerIdentityReview": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "example": "104c267f8e1e8c6855d7788b76a8"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Pending",
+            "InReview",
+            "Approved",
+            "Declined",
+            "Expired",
+            "Abandoned"
+          ],
+          "example": "InReview"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "AssinafyVerify"
+          ],
+          "example": "AssinafyVerify"
+        },
+        "verification_method": {
+          "type": "string",
+          "enum": [
+            "IdDocumentFaceMatchBasic"
+          ],
+          "example": "IdDocumentFaceMatchBasic"
+        },
+        "reason_codes": {
+          "description": "Why the provider sent it to review, in its order. Unknown codes have the code as description.",
+          "type": "array",
+          "items": {
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "NAME_MISMATCH"
+              },
+              "description": {
+                "type": "string",
+                "example": "Nome no documento difere do cadastrado (similaridade 52%)"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "evidence_available": {
+          "type": "boolean",
+          "example": true
+        },
+        "expected": {
+          "description": "What the signer was registered with.",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "Maria da Silva"
+            },
+            "cpf": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "52998224725"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "document": {
+          "description": "What was read from the document.",
+          "properties": {
+            "type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "CNH"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "MARIA SILVA"
+            },
+            "cpf": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "example": "52998224725"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "matches": {
+          "properties": {
+            "cpf": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "example": true
+            },
+            "name": {
+              "description": "Name similarity, 0-1.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "example": 0.5217
+            },
+            "birth_date": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "example": null
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "name"
+              },
+              "result": {
+                "description": "pass, review, skipped, or a failure result.",
+                "type": "string",
+                "example": "review"
+              },
+              "score": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "example": 0.5217
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "NAME_MISMATCH"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "images": {
+          "description": "The evidence images the reviewer can open with **Signer identity review image**, in display order: `document_front`, `document_back`, `document_pdf`, `face`. Only while `status` is `InReview`; empty once decided.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "document_front",
+              "document_back",
+              "document_pdf",
+              "face"
+            ]
+          },
+          "example": [
+            "document_front",
+            "document_back",
+            "face"
+          ]
+        },
+        "ruleset_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "2026-10-12.2"
+        },
+        "evidence_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "9f2c0d6e4b1a8c3f5e7d9b0a2c4e6f8a1b3d5f7091e2c4a6b8d0f2e4a6c8e0b2"
+        },
+        "reviewed_by": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "example": "Kx9pQ2"
+            },
+            "name": {
+              "type": "string",
+              "example": "Ana Souza"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": "2026-10-13T21:05:00Z"
+        },
+        "review_note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "Conferido por videochamada."
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "example": "2026-10-13T21:05:00Z"
+        }
+      },
+      "type": "object"
     }
   },
   "webhookSubscriptionInput": {
@@ -1955,7 +2216,7 @@
                   "example": "+5548999990000"
                 },
                 "government_id": {
-                  "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save.",
+                  "description": "Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save. Required before the signer can use a verification method that identifies them by CPF.",
                   "type": "string",
                   "example": "390.533.447-05"
                 }
@@ -2310,7 +2571,22 @@
                 {
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/WebhookEndpoint"
+                      "type": "object",
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/WebhookEndpoint"
+                        },
+                        {
+                          "properties": {
+                            "secret": {
+                              "description": "Standard Webhooks signing secret: `whsec_` followed by the base64-encoded key. Present only when `signing_enabled` is `true`.",
+                              "type": "string",
+                              "example": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      ]
                     }
                   },
                   "type": "object"
@@ -2526,6 +2802,93 @@
                       "items": {
                         "$ref": "#/components/schemas/WebhookDispatch"
                       }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification",
+      "requestBody": null,
+      "response": {
+        "description": "Identity review",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SignerIdentityReview"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "decision"
+              ],
+              "properties": {
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "Approved",
+                    "Rejected"
+                  ],
+                  "example": "Approved"
+                },
+                "note": {
+                  "description": "Optional. Recorded in the activity log and sent to the provider; never shown to the signer.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 2000,
+                  "example": "Conferido por videochamada."
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "Decided",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SignerIdentityReview"
                     }
                   },
                   "type": "object"

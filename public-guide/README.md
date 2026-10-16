@@ -105,6 +105,8 @@ O envelope da API guarda o registro em `data`. Algumas ações da Pluga adiciona
 
 A Assinafy suporta assinatura Standard Webhooks por endpoint (signing_enabled). A URL privada do receptor e o filtro de workspace não verificam essa assinatura. Um receptor que tenha acesso ao corpo original e aos headers pode verificar HMAC-SHA256 antes de encaminhar o evento à Pluga. A consulta autenticada confirma o documento e seu estado atual. Não autorize operações usando apenas os dados recebidos pelo webhook.
 
+Criar um endpoint com `signing_enabled: true` retorna um `secret` que deve ser guardado imediatamente no receptor. Listas/consultas de endpoints não o retornam. Consultar ou rotacionar esse segredo depois exige API key; com OAuth, perder o segredo exige excluir explicitamente o endpoint e criar outro.
+
 `document_ready` pode chegar antes de o PDF certificado estar disponível. Para baixar o arquivo final, aguarde o estado `certificated` e a disponibilidade do artefato. Os endpoints de download exigem autenticação; não são links públicos para compartilhar.
 
 ### Três possibilidades de destino
@@ -195,6 +197,19 @@ POST https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/assignments
 
 O modo `virtual` foi testado para documentos existentes. O envio por modelo foi testado com campo de assinatura posicionado no próprio modelo. O upload binário de PDF diretamente pela Pluga não está incluído neste caminho validado; prepare o documento/modelo na Assinafy antes da automação.
 
+### Métodos de assinatura
+
+As duas chamadas de envio aceitam os mesmos métodos em `signers`. Use exatamente um canal em `notification_methods`:
+
+| verification_method | notification_methods | Requisitos |
+|---|---|---|
+| `Email` | `["Email"]` | E-mail |
+| `Whatsapp` | `["Whatsapp"]` | Número E.164; recurso/créditos |
+| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | CPF/CNPJ, certificado ICP-Brasil A1/A3 e recurso do plano; um signatário por passo |
+| `IdDocumentFaceMatchBasic` | `["Email"]` ou `["Whatsapp"]` | CPF, recurso ID Document + Face Match; captura consentida pelo signatário |
+
+Biometria usa foto do documento, foto com o documento e prova de vida na interface da Assinafy. Não envie imagens ou dados biométricos à Pluga. Se a verificação ficar InReview, o signatário ainda pode assinar; o documento aguarda `pending_identity_review` até a conta aprovar todas as revisões. Rejeitar uma revisão cancela o documento. Confirme sempre `certificated` antes de baixar o arquivo final. Consulte o catálogo do ambiente para eventos de identidade e os endpoints de estimativa de custo antes de envios cobrados.
+
 ## 6. Evite efeitos duplicados
 
 Eventos podem ser entregues novamente ou fora de ordem. O fluxo validado de recepção faz uma consulta GET; repetir essa leitura não cria documentos nem convites.
@@ -242,4 +257,4 @@ PDFs e ZIPs finais foram baixados e conferidos diretamente pela API, fora da Plu
 - [HTTP Request na Pluga](https://pluga.co/ferramentas/http-request/integracao/)
 - Destinos propostos: [Google Sheets](https://pluga.co/ferramentas/google-sheets/integracao/), [Pipedrive](https://pluga.co/ferramentas/pipedrive/integracao/) e [Trello](https://pluga.co/ferramentas/trello/integracao/).
 
-Guia mantido pela Assinafy. Atualizado em 9 de outubro de 2026.
+Guia mantido pela Assinafy. Atualizado em 16 de outubro de 2026.

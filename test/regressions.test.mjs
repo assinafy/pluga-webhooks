@@ -86,9 +86,10 @@ test('template readiness, unknown actions/lists and null request bodies fail saf
   await assert.rejects(runAction('get_document', client(empty), { document_id: 'document1', body: null }), hasCode('INVALID_INPUT')); empty.done();
 });
 test('multiple webhook endpoints preserve unrelated destinations and create through POST', async () => {
+  const created = { ...endpoint, secret: 'whsec_dGVzdC1rZXk=' };
   const m = mock([catalog(), workspaceStep(), { response: ok([{ ...endpoint, id: 'other', url: 'https://other.example.com/hook' }]) },
-    { response: ok(endpoint), check(url, init) { assert.equal(url.pathname, '/v1/accounts/workspace1/webhooks/endpoints'); assert.equal(init.method, 'POST'); assert.deepEqual(JSON.parse(init.body), input); } }]);
-  assert.deepEqual(await registerWebhookEndpoint(client(m), input), endpoint); m.done();
+    { response: ok(created), check(url, init) { assert.equal(url.pathname, '/v1/accounts/workspace1/webhooks/endpoints'); assert.equal(init.method, 'POST'); assert.deepEqual(JSON.parse(init.body), input); } }]);
+  assert.deepEqual(await registerWebhookEndpoint(client(m), input), created); m.done();
 });
 test('matching endpoint is reused; changing an existing URL requires explicit update', async () => {
   const m = mock([catalog(), workspaceStep(), { response: ok([endpoint]) }]);
@@ -112,6 +113,21 @@ test('endpoint partial update, secret read/rotation and deletion use their exact
   await updateWebhookEndpoint(c, 'endpoint1', { is_active: false });
   assert.equal(await getWebhookSecret(c, 'endpoint1'), secret); assert.equal(await getWebhookSecret(c, 'endpoint1', true), secret);
   await deleteWebhookEndpoint(c, 'endpoint1'); m.done();
+});
+test('unconfirmed endpoint writes and secret rotation report unknown outcomes without replay', async () => {
+  const cases = [
+    [() => [catalog(), workspaceStep(), { response: ok([]) }], { ...endpoint, updated_at: null }, c => registerWebhookEndpoint(c, input)],
+    [() => [catalog(), workspaceStep(), { response: ok([]) }], { ...endpoint, is_active: false }, c => registerWebhookEndpoint(c, input)],
+    [() => [workspaceStep()], { ...endpoint, is_active: true }, c => updateWebhookEndpoint(c, endpoint.id, { is_active: false })],
+    [() => [workspaceStep()], { ...endpoint, id: 'other' }, c => updateWebhookEndpoint(c, endpoint.id, { is_active: true })],
+    [() => [workspaceStep()], {}, c => deleteWebhookEndpoint(c, endpoint.id)],
+    [() => [workspaceStep()], { secret: 'invalid' }, c => getWebhookSecret(c, endpoint.id, true)],
+  ];
+  for (const [reads, data, run] of cases) {
+    const m = mock([...reads(), { response: ok(data) }]);
+    await assert.rejects(run(client(m)), error => error.code === 'INVALID_RESPONSE' && error.outcomeUnknown && !error.safeToRetry);
+    m.done();
+  }
 });
 test('webhook signature uses exact raw UTF-8 bytes, multiple v1 entries and a five-minute window', async () => {
   const raw = JSON.stringify({ ...event, message: 'Assinatura ✓' });

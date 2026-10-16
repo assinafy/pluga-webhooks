@@ -44,7 +44,7 @@ Informe o contato necessário antes de solicitar assinatura; o cadastro aceita s
 - Selecione um modelo pronto no mesmo workspace (`GET /accounts/{accountId}/templates`).
 - Mapeie uma entrada em `signers` para cada papel não-editor: `role_id` do modelo e `id` do signatário existente.
 - Para campos do editor, use `editor_fields: [{"field_id":"ID_DO_CAMPO","value":"VALOR"}]`. Remova esse campo se o modelo não tiver campos do editor.
-- A receita usa verificação e notificação por `Email`. WhatsApp e certificado digital têm requisitos e possíveis custos próprios.
+- A receita usa verificação e notificação por `Email`. `Whatsapp`, `DigitalCertificate` (A1/A3) e `IdDocumentFaceMatchBasic` (biometria) também são aceitos; canais, requisitos de CPF/CNPJ e revisão estão em [API.md](API.md#verificação-e-notificação).
 - `name`, `message`, `expires_at` e `tags` são opcionais. Expiração exige ISO 8601 com fuso, pelo menos uma hora à frente.
 - **Esta chamada cria o documento e inicia o fluxo de assinatura.** Use somente destinatários autorizados no teste.
 
@@ -79,7 +79,7 @@ O evento real também pode incluir dados pessoais do usuário em `subject` e met
 
 O envelope contém `id`, `event`, `account_id`, `created_at` (Unix em segundos), `subject`, `object`, `payload`, `origin` e `message`. Campos adicionais devem ser tolerados. Um evento pode ser repetido ou chegar fora de ordem. Use `account_id + ":" + id` como chave em armazenamento persistente antes de efeitos duplicáveis; a presença dessa chave no helper não implementa deduplicação na Pluga.
 
-A API suporta Standard Webhooks: habilite signing_enabled no endpoint, obtenha o segredo por API key e verifique corpo original, webhook-id, webhook-timestamp e webhook-signature antes de usar o evento. O cliente inclui verifyWebhookSignature. Se a Pluga não permitir essa verificação, use um receptor seu para verificar antes de encaminhar. Mantenha a URL privada e confirme o objeto por GET autenticado. A API tenta entregar até duas vezes, com três segundos entre tentativas.
+A API suporta Standard Webhooks: crie o endpoint com signing_enabled e guarde o secret da resposta, inclusive com OAuth. Listas/consultas não retornam esse segredo; somente API key pode consultá-lo ou rotacioná-lo depois. Verifique corpo original, webhook-id, webhook-timestamp e webhook-signature antes de usar o evento. O cliente inclui verifyWebhookSignature. Se a Pluga não permitir essa verificação, use um receptor seu para verificar antes de encaminhar. Mantenha a URL privada e confirme o objeto por GET autenticado. A API tenta entregar até duas vezes, com três segundos entre tentativas.
 
 ## PDF, erros e recuperação
 

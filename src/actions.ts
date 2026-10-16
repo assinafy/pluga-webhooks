@@ -36,7 +36,7 @@ function validateSigning(rows: Record<string, unknown>[]): void {
       ['Email', 'Whatsapp'].includes(String(notifications[0])), 'INVALID_NOTIFICATION', 'Choose exactly one notification channel.');
     const channel = Array.isArray(notifications) ? notifications[0] : undefined;
     const verification = row.verification_method ?? channel ?? 'Email';
-    invariant(!channel || verification === 'DigitalCertificate' || channel === verification,
+    invariant(!channel || ['DigitalCertificate', 'IdDocumentFaceMatchBasic'].includes(String(verification)) || channel === verification,
       'INVALID_NOTIFICATION', 'Verification and notification channels must match.');
     if (row.step !== undefined) invariant(Number.isInteger(row.step) && Number(row.step) > 0,
       'INVALID_STEPS', 'Signing steps must be positive integers.');
@@ -62,9 +62,11 @@ async function verifyContacts(client: AssinafyClient, rows: Record<string, unkno
     invariant(channel === 'Whatsapp' ? typeof contact.whatsapp_phone_number === 'string' && E164_PATTERN.test(contact.whatsapp_phone_number) :
       typeof contact.email === 'string' && EMAIL_PATTERN.test(contact.email),
     'INVALID_CONTACT', 'The signer needs a valid contact for the selected notification channel.');
-    if (row.verification_method === 'DigitalCertificate') invariant(typeof contact.government_id === 'string' &&
-      /^(?:\d{11}|[A-Z0-9]{12}\d{2})$/.test(contact.government_id),
-    'INVALID_GOVERNMENT_ID', 'Digital certificate signers need a normalized CPF or CNPJ.');
+    if (row.verification_method === 'DigitalCertificate' || row.verification_method === 'IdDocumentFaceMatchBasic') {
+      const pattern = row.verification_method === 'IdDocumentFaceMatchBasic' ? /^\d{11}$/ : /^(?:\d{11}|[A-Z0-9]{12}\d{2})$/;
+      invariant(typeof contact.government_id === 'string' && pattern.test(contact.government_id),
+        'INVALID_GOVERNMENT_ID', 'Biometric signers need a normalized CPF; digital certificate signers need a normalized CPF or CNPJ.');
+    }
   }
 }
 export async function runAction(action: ActionId, client: AssinafyClient, input: Input = {}): Promise<Resource> {

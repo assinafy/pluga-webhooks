@@ -105,7 +105,7 @@ test('dependent template lists filter editor roles and expose unique editor fiel
 test('local end-to-end action sequence creates a signer, sends a template and reads certification', async () => {
   const body = { signers: [{ id: 'signer1', role_id: 'customer' }], editor_fields: [{ field_id: 'price', value: 'R$ 20' }] };
   const m = mock([workspaceStep(), { response: ok(signer) }, { response: ok([template]) }, { response: ok([signer]) },
-    { response: ok({ ...readyDocument, status: 'pending' }) }, { response: ok({ ...readyDocument, status: 'certificated' }) }]);
+    { response: ok({ ...readyDocument, status: 'pending_signature' }) }, { response: ok({ ...readyDocument, status: 'certificated' }) }]);
   const c = client(m);
   await runAction('create_signer', c, { body: { full_name: 'Test Signer', email: 'signer@example.com' } });
   const sent = await runAction('create_document_from_template', c, { template_id: 'template1', body });

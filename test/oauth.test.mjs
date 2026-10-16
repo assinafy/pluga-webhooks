@@ -87,3 +87,34 @@ test('OAuth API credentials use only Bearer and still check workspace membership
   const m = mock([{ response: ok([account]), check(_, init) { assert.equal(init.headers.Authorization, 'Bearer access-test'); assert.equal(init.headers['X-Api-Key'], undefined); } }]);
   assert.equal((await new AssinafyClient({ type: 'oauth2', accessToken: token.access_token, accountId: account.id }, m.runtime).workspace()).id, account.id); m.done();
 });
+test('callback application query values are preserved and cannot be changed or duplicated', async () => {
+  const saved = { ...session, redirectUri: session.redirectUri + '?connection=local&connection=second' };
+  const url = new URL(saved.redirectUri);
+  for (const [key, value] of new URL(callback()).searchParams) url.searchParams.append(key, value);
+  const m = mock([{ response: response(token), check(_, init) { assert.equal(init.body.get('redirect_uri'), saved.redirectUri); } }]);
+  await exchangeOAuthCode(saved, url.href, undefined, m.runtime); m.done();
+  const empty = mock([]);
+  for (const attack of [url.href.replace('local', 'other'), url.href + '&connection=third', 'invalid-url']) {
+    await assert.rejects(exchangeOAuthCode(saved, attack, undefined, empty.runtime), hasCode('INVALID_OAUTH_CALLBACK'));
+  }
+  for (const redirectUri of ['http://callback.example.com/oauth', 'invalid-url', session.redirectUri + '?code=reserved', session.redirectUri + '#fragment']) {
+    await assert.rejects(createOAuthAuthorization({ ...app, redirectUri, scopes: ['account:read'] }, empty.runtime), hasCode('INVALID_INPUT'));
+  }
+  empty.done();
+});
+test('sandbox code exchange, refresh and revocation stay on sandbox hosts with separate tokens', async () => {
+  const sandboxApp = { ...app, environment: 'sandbox', clientSecret: 'sandbox-secret' };
+  const sandboxMetadata = Object.fromEntries(Object.entries(metadata).map(([key, value]) => [key, typeof value === 'string' ?
+    value.replace('auth.assinafy', 'auth-sandbox.assinafy').replace('api.assinafy', 'sandbox.assinafy') : value]));
+  const saved = { ...session, ...sandboxApp, issuer: sandboxMetadata.issuer };
+  const returned = callback({ iss: saved.issuer });
+  const check = (url, init) => {
+    assert.equal(url.origin, 'https://sandbox.assinafy.com.br'); assert.equal(init.body.get('client_secret'), 'sandbox-secret');
+    assert.equal(init.headers.Authorization, undefined); assert.equal(init.headers['X-Api-Key'], undefined);
+  };
+  const m = mock([{ response: response(token), check }, { response: response(sandboxMetadata) }, { response: response(token), check },
+    { response: response(sandboxMetadata) }, { response: new Response(null), check }]);
+  await exchangeOAuthCode(saved, returned, sandboxApp.clientSecret, m.runtime);
+  await refreshOAuthToken(sandboxApp, 'sandbox-refresh', m.runtime);
+  await revokeOAuthToken(sandboxApp, 'sandbox-refresh', m.runtime); m.done();
+});

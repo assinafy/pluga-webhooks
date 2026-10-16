@@ -15,7 +15,7 @@ Importe as funções e tipos de `dist/index.js` após `npm run build`. Os endpoi
 | `ListId` | `documents`, `signers`, `templates`, `fields`, `template_roles`, `editor_fields`, `document_pages` |
 | `Subscription` | `url`, `email`, `events`, `is_active`; URL/e-mail podem ser nulos na consulta legada |
 | `WebhookEndpointInput` | `url`, `email`, `events`; opcionais `name`, `is_active`, `signing_enabled` |
-| `WebhookEndpoint` | Configuração, `id`, `name` nulo ou texto, `created_at`, `updated_at` |
+| `WebhookEndpoint` | Configuração, `id`, `name` nulo ou texto, `created_at`, `updated_at`; `secret?` somente na criação assinada |
 | `OAuthApplication` | `clientId`, `clientSecret?`, `environment?` |
 | `OAuthSession` | Aplicação publicável, `redirectUri`, `state`, `codeVerifier`, `issuer`, `url`; o segredo não é copiado para a sessão criada |
 | `OAuthTokens` | `access_token`, `token_type: Bearer`, `expires_in`, `scope`, `refresh_token?`, `id_token?` |
@@ -64,6 +64,77 @@ A resposta do upload é um Document, inicialmente em processamento. O download r
 
 `contract` contém os contratos de request/response e schemas usados na validação. `API_URLS` contém os hosts fixos por ambiente. Não altere contratos para adicionar campos; atualize a implementação junto à documentação oficial.
 
+### Verificação e notificação
+
+Os mesmos valores são aceitos em `signers` de `request_signatures` (virtual/collect) e `create_document_from_template`. Configurações de verificação aplicam-se aos papéis Signer; papéis de cópia não assinam.
+
+| verification_method | notification_methods | Contato e requisitos |
+|---|---|---|
+| `Email` | `["Email"]` | E-mail válido |
+| `Whatsapp` | `["Whatsapp"]` | whatsapp_phone_number E.164; plano/créditos |
+| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | Canal correspondente e CPF/CNPJ normalizado; recurso ICP-Brasil A1/A3; sozinho em seu passo |
+| `IdDocumentFaceMatchBasic` | `["Email"]` ou `["Whatsapp"]` | Canal correspondente e CPF normalizado; recurso ID Document + Face Match |
+
+Exatamente um canal por signatário. Sem os dois campos, usa Email. Só o canal infere a verificação correspondente; só a verificação infere o canal correspondente para Email/Whatsapp e Email para certificado/biometria. O cliente verifica a forma do contato; a API valida CPF/CNPJ, disponibilidade do recurso e créditos. Consulte POST `/documents/DOCUMENT_ID/assignments/estimate-cost` ou POST `/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents/estimate-cost` antes de envios cobrados.
+
+### Biometria e revisão de identidade
+
+Request completo para documento existente, POST `/documents/DOCUMENT_ID/assignments`:
+
+```json
+{
+  "method": "virtual",
+  "signers": [{
+    "id": "SIGNER_ID",
+    "verification_method": "IdDocumentFaceMatchBasic",
+    "notification_methods": ["Email"],
+    "step": 1
+  }]
+}
+```
+
+A resposta é o Assignment completo mostrado em `request_signatures`. Seus signatários incluem `identity_verification_status` quando disponível: Pending, InReview, Approved, Declined, Expired ou Abandoned. O cliente preserva o campo em respostas de ações e documentos expandidos. O signatário dá consentimento e faz a captura na interface de assinatura; nenhum dado biométrico é enviado nesta requisição.
+
+InReview permite ao signatário concluir a assinatura. Depois que todos assinam, o documento fica em `pending_identity_review` até a conta decidir todas as revisões. Consulte GET `/documents/DOCUMENT_ID/assignments/ASSIGNMENT_ID/signers/SIGNER_ID/identity-verification`, sem body. A decisão usa POST no mesmo path com `/review`, via `client.envelope('POST', path, { json: body })`, ou a interface da Assinafy. Use IDs obtidos do documento autenticado e preserve o controle de acesso do workspace.
+
+Request completo da decisão:
+
+```json
+{ "decision": "Approved", "note": "Conferência concluída pela conta." }
+```
+
+`decision` admite Approved ou Rejected; `note` é opcional, string de até 2000 caracteres ou null. GET e POST retornam o mesmo modelo completo de revisão; exemplo fictício após aprovação:
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": {
+    "id": "REVIEW_ID",
+    "status": "Approved",
+    "provider": "AssinafyVerify",
+    "verification_method": "IdDocumentFaceMatchBasic",
+    "reason_codes": [{ "code": "NAME_MISMATCH", "description": "Nome requer conferência." }],
+    "evidence_available": true,
+    "expected": { "name": "Signatário de exemplo", "cpf": "39053344705" },
+    "document": { "type": "CNH", "name": "Signatário de exemplo", "cpf": "39053344705" },
+    "matches": { "cpf": true, "name": 0.9, "birth_date": null },
+    "checks": [{ "name": "name", "result": "review", "score": 0.9, "reasons": ["NAME_MISMATCH"] }],
+    "images": [],
+    "ruleset_version": "EXAMPLE",
+    "evidence_sha256": null,
+    "reviewed_by": { "id": "USER_ID", "name": "Revisor de exemplo" },
+    "reviewed_at": "2026-10-16T12:00:00Z",
+    "review_note": "Conferência concluída pela conta.",
+    "completed_at": "2026-10-16T12:00:00Z"
+  }
+}
+```
+
+Aprovar todas as revisões permite a certificação após as assinaturas. Rejected cancela o documento com `rejected_by_user` e notifica os participantes; a nota fica restrita à conta/provedor. Decisões não são repetidas automaticamente. O resumo de evidência não contém imagens ou biometria; imagens de revisão só ficam disponíveis enquanto InReview e devem permanecer na interface autorizada do revisor.
+
+`normalizeEvent` reconhece signer_identity_verified, signer_identity_verification_failed, signer_identity_review_required, signer_identity_review_approved e signer_identity_review_rejected como eventos de documento. O resultado reduzido contém document_id e não expõe evidências. Consulte o catálogo do ambiente antes de inscrever esses eventos.
+
 ## Webhooks
 
 | Função | Request | Response |
@@ -79,6 +150,8 @@ A resposta do upload é um Document, inicialmente em processamento. O download r
 | `normalizeEvent(input, accountId, webhookId?)` | Nenhuma; objeto já autenticado, ID do workspace e header opcional | Evento reduzido descrito abaixo |
 
 Cadastro/atualização de endpoints exigem URL pública HTTPS neste cliente, e-mail e códigos de evento do catálogo. O serviço permite um endpoint gratuito ou até três em planos pagos; a API aplica o limite. `is_active` tem padrão true e `signing_enabled` false. Rotacionar o segredo invalida imediatamente o anterior. Não grave o segredo no payload de evento nem o encaminhe à Pluga.
+
+Criar com `signing_enabled: true` retorna `secret` uma vez, inclusive por OAuth. Guarde-o antes de concluir a instalação. Reutilizar um endpoint já existente retorna os dados de listagem, sem secret. Consultar/rotacionar o segredo depois exige API key; uma conexão OAuth que o perdeu precisa excluir explicitamente o endpoint e criar outro. PUT que habilita assinatura não retorna o segredo: configure assinatura na criação para integrações OAuth.
 
 O helper legado exige `is_active: true` e configuração completa; alteração de configuração existente exige operação explícita no endpoint. Mutações devem ser feitas uma vez no setup, sem repetição em cada documento.
 
@@ -134,9 +207,44 @@ Omita client_secret em clientes public. A troca usa `application/x-www-form-urle
 
 `refresh_token` existe quando offline_access foi consentido; `id_token` depende de openid. O cliente não valida ID tokens OIDC. No refresh, envie grant_type=refresh_token, client_id, refresh_token e client_secret apenas para confidential. Na revogação, envie client_id, token e o segredo se aplicável. Tokens rotacionam; serialize refresh por conexão, persista o novo token antes de uso e reconcilie timeouts. Não tente novamente com o token antigo.
 
+Requests completos de refresh e revogação, com o mesmo Content-Type da troca de código:
+
+```text
+grant_type=refresh_token
+client_id=CLIENT_ID
+client_secret=CLIENT_SECRET
+refresh_token=REFRESH_TOKEN
+```
+
+```text
+client_id=CLIENT_ID
+client_secret=CLIENT_SECRET
+token=ACCESS_OR_REFRESH_TOKEN
+```
+
+Refresh retorna o modelo OAuthTokens acima com os tokens atuais; revogação retorna HTTP 200, inclusive sem body, e o helper retorna void. Em clientes public, omita client_secret em ambos. Nunca registre esses bodies.
+
+`createOAuthAuthorization` recebe `{ clientId, clientSecret?, environment?, redirectUri, scopes }`, consulta discovery e retorna uma sessão com estes campos (valores fictícios):
+
+```json
+{
+  "clientId": "CLIENT_ID",
+  "environment": "production",
+  "redirectUri": "https://app.example.com/oauth/callback",
+  "state": "STATE_GENERATED_FOR_THIS_ATTEMPT",
+  "codeVerifier": "PKCE_VERIFIER_GENERATED_FOR_THIS_ATTEMPT_43_CHARS",
+  "issuer": "https://auth.assinafy.com.br",
+  "url": "https://auth.assinafy.com.br/oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=https%3A%2F%2Fapp.example.com%2Foauth%2Fcallback&scope=account%3Aread&state=STATE_GENERATED_FOR_THIS_ATTEMPT&code_challenge=S256_CHALLENGE&code_challenge_method=S256&resource=https%3A%2F%2Fapi.assinafy.com.br"
+}
+```
+
+Guarde a sessão completa no servidor por tentativa, vinculada ao usuário; redirecione somente para url. Consuma a sessão atomicamente antes da troca e não exponha codeVerifier ao browser. O segredo do cliente não é copiado para a sessão criada; passe-o separadamente a exchangeOAuthCode quando confidential. Os helpers recebem armazenamento/serialização de refresh do integrador, sem estado global de conexões.
+
 ## Erros
 
 `IntegrationError` estende Error. Campos: `code: string`, `httpStatus?: number`, `outcomeUnknown: boolean`, `safeToRetry: boolean`, `retryAfterSeconds?: number`. A mensagem é segura para logs resumidos; não inclui upstream bodies.
+
+Respostas de gravação incompatíveis com a configuração solicitada também têm `outcomeUnknown: true`, inclusive endpoints, inscrição legada, exclusão e rotação de segredo. Inspecione o resultado remoto antes de repetir, mesmo quando code é INVALID_RESPONSE.
 
 - `API_ERROR`: status HTTP, sem replay; leituras 429/5xx podem ser repetidas depois do intervalo.
 - `MUTATION_OUTCOME_UNKNOWN`: escrita com resposta incerta; confira o workspace antes de replay.
@@ -619,13 +727,14 @@ Response HTTP:
     ],
     "is_active": true,
     "signing_enabled": true,
+    "secret": "whsec_dGVzdC1rZXk=",
     "created_at": "2026-10-01T12:00:00Z",
     "updated_at": "2026-10-01T12:00:00Z"
   }
 }
 ```
 
-A lista de endpoints retorna o mesmo modelo em `data: [...]`. PUT retorna o endpoint completo; DELETE retorna `{ "status": 200, "message": "", "data": [] }`. GET/POST do segredo retorna `{ "status": 200, "message": "", "data": { "secret": "whsec_dGVzdC1rZXk=" } }`.
+A lista de endpoints retorna o mesmo modelo sem secret em `data: [...]`, sem body de requisição. PUT pode enviar qualquer subconjunto do request acima, por exemplo `{ "is_active": false }`, e retorna o endpoint completo sem secret. DELETE não envia body e retorna `{ "status": 200, "message": "", "data": [] }`. GET/POST do segredo não envia body e retorna `{ "status": 200, "message": "", "data": { "secret": "whsec_dGVzdC1rZXk=" } }`.
 
 ## Payloads de workspace, consultas e listas
 

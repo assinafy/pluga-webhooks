@@ -49,7 +49,10 @@ flowchart TD
   G --> H
   H --> I[Receber e verificar webhook]
   I --> J[Consultar documento autenticado]
-  J --> K[Aguardar certificated e baixar artefatos]
+  J --> R{pending_identity_review?}
+  R -->|Sim| S[Revisar identidade na Assinafy]
+  S --> J
+  R -->|Não| K[Aguardar certificated e baixar artefatos]
   K --> L[Atualizar destino pelo ID do documento]
 ```
 
@@ -145,8 +148,11 @@ Para documento existente, `POST /documents/DOCUMENT_ID/assignments`:
 | `Email` | `Email` | Contato com e-mail |
 | `Whatsapp` | `Whatsapp` | Número E.164; recurso do plano e créditos |
 | `DigitalCertificate` | `Email` ou `Whatsapp` | CPF/CNPJ, recurso de certificado digital, ICP-Brasil A1/A3; um signatário por passo |
+| `IdDocumentFaceMatchBasic` | `Email` ou `Whatsapp` | CPF, recurso ID Document + Face Match; foto do documento, foto com o documento e prova de vida |
 
 `notification_methods` aceita exatamente um canal. Se um lado for omitido, a API infere o outro; se ambos forem omitidos, usa Email. A1/A3 são certificados usados pelo signatário via Web PKI; o código enviado à API é `DigitalCertificate`. Consulte os endpoints de estimativa de custo da [API](https://api.assinafy.com.br/v1/docs) antes de envios que consumam créditos.
+
+Biometria usa `verification_method: "IdDocumentFaceMatchBasic"` nas duas ações de envio. O cliente exige CPF normalizado no contato e o canal escolhido; a API aplica disponibilidade do recurso, validade do CPF e cobrança. O signatário dá consentimento e realiza a captura na interface de assinatura. Não envie imagens ou dados biométricos no payload da Pluga.
 
 ### 5. Receba e verifique os eventos
 
@@ -165,7 +171,7 @@ Crie **Webhooks → Notificação recebida** na Pluga e copie a URL privada. Con
 
 Há um endpoint no plano gratuito e até três nos planos pagos. Cada um possui URL, eventos e assinatura próprios. Use uma URL distinta para cada integração. `/webhooks/subscriptions` continua funcionando e atua no endpoint mais antigo; os helpers legados preservam uma configuração existente diferente.
 
-Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Obtenha o segredo por API key em `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`; essa operação não aceita OAuth. Guarde o segredo somente no receptor.
+Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Ao criar o endpoint com `signing_enabled: true`, guarde imediatamente o `secret` retornado por `registerWebhookEndpoint`; ele não aparece em listas ou consultas posteriores. Com API key, também é possível consultar `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`. Essa consulta e a rotação não aceitam OAuth: se o segredo de um endpoint OAuth for perdido, exclua explicitamente esse endpoint e crie outro. Guarde o segredo somente no receptor.
 
 ```js
 import { verifyWebhookSignature, normalizeEvent } from './dist/index.js';
@@ -192,6 +198,8 @@ if (current.status === 'certificated') {
 ```
 
 Depois da última assinatura, o documento passa de `pending_signature` para `certificating` e depois `certificated`; `GET /documents/statuses` lista todos os estados. Consulte estado e artefatos até estarem disponíveis. `document.artifacts` sempre traz `original`, traz `thumbnail` quando a miniatura existe e, após a certificação, `certificated`, `certificate-page`, `bundle` e, com signatários `DigitalCertificate`, `pades`, que preserva as assinaturas ICP-Brasil. Baixe esses arquivos em `/documents/DOCUMENT_ID/download/ARTEFATO`; a miniatura JPEG usa `/documents/DOCUMENT_ID/thumbnail`. URLs de artefatos exigem autenticação; não são links públicos.
+
+Com biometria, `assignment.signers[].identity_verification_status: "InReview"` exige revisão da conta. O signatário pode assinar enquanto isso; após todas as assinaturas, o documento aguarda em `pending_identity_review`. Aprove ou rejeite na Assinafy ou pelo [endpoint de revisão](docs/API.md#biometria-e-revisão-de-identidade). Aprovar todas as revisões libera a certificação; rejeitar cancela o documento. Os eventos `signer_identity_verified`, `signer_identity_verification_failed`, `signer_identity_review_required`, `signer_identity_review_approved` e `signer_identity_review_rejected` são reconhecidos por `normalizeEvent`; selecione somente eventos publicados pelo catálogo do ambiente.
 
 Downloads têm limite padrão de 50 MiB. Redirects externos exigem origens HTTPS em `trustedDownloadOrigins` e recebem a requisição sem API key/token. Esse parâmetro é configuração do deployment, sem controle pelo usuário final.
 

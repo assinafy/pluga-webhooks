@@ -61,7 +61,8 @@
       "path": "/accounts/{accountId}/signers",
       "body": {
         "full_name": "Signatário de teste",
-        "email": "signatario@example.com"
+        "email": "signatario@example.com",
+        "government_id": "390.533.447-05"
       },
       "response_model": {
         "status": 200,
@@ -69,7 +70,8 @@
         "data": {
           "id": "signer_example",
           "full_name": "Signatário de teste",
-          "email": "signatario@example.com"
+          "email": "signatario@example.com",
+          "government_id": "39053344705"
         }
       }
     },
@@ -122,7 +124,41 @@
         "data": {
           "id": "document_example",
           "account_id": "workspace_example",
-          "status": "pending"
+          "status": "pending_signature"
+        }
+      }
+    },
+    {
+      "id": "create_document_from_template_biometric",
+      "name": "Criar e enviar documento a partir de modelo — biometria",
+      "method": "POST",
+      "path": "/accounts/{accountId}/templates/{templateId}/documents",
+      "body": {
+        "name": "Teste Pluga",
+        "signers": [
+          {
+            "id": "signer_example",
+            "role_id": "role_example",
+            "verification_method": "IdDocumentFaceMatchBasic",
+            "notification_methods": [
+              "Email"
+            ]
+          }
+        ],
+        "editor_fields": [
+          {
+            "field_id": "field_example",
+            "value": "Valor de teste"
+          }
+        ]
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "id": "document_example",
+          "account_id": "workspace_example",
+          "status": "pending_signature"
         }
       }
     },
@@ -137,6 +173,31 @@
           {
             "id": "signer_example",
             "verification_method": "Email",
+            "notification_methods": [
+              "Email"
+            ]
+          }
+        ]
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "id": "assignment_example"
+        }
+      }
+    },
+    {
+      "id": "request_signatures_biometric",
+      "name": "Solicitar assinaturas de documento existente — biometria",
+      "method": "POST",
+      "path": "/documents/{documentId}/assignments",
+      "body": {
+        "method": "virtual",
+        "signers": [
+          {
+            "id": "signer_example",
+            "verification_method": "IdDocumentFaceMatchBasic",
             "notification_methods": [
               "Email"
             ]

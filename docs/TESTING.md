@@ -9,7 +9,7 @@ npm run contract
 npm run test:coverage
 ```
 
-`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate, CPF/CNPJ, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, endpoints múltiplos e assinaturas Standard Webhooks.
+`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos e assinaturas Standard Webhooks.
 
 `contract` lê o OpenAPI público e verifica requests/responses, schemas referenciados, endpoints auxiliares, receitas e autenticação. Também pode receber um arquivo local:
 
@@ -41,6 +41,8 @@ O script lê workspace, inscrição legada, endpoints, catálogo de eventos e li
 8. Repita o evento e teste a reserva persistente antes de ativar efeitos duplicáveis.
 
 A1/A3 exigem assinatura na interface do signatário com certificado ICP-Brasil correspondente ao CPF/CNPJ. Um token OAuth ou API key não substitui certificado, senha, extensão Web PKI ou hardware A3. Para validar o documento final, confirme certificated/artefatos e faça validação criptográfica do PAdES quando esse for o requisito do processo.
+
+Biometria exige CPF válido, recurso ID Document + Face Match e captura consentida pelo próprio signatário. Teste aprovação direta, falha e revisão: InReview permite assinatura, pending_identity_review bloqueia certificação, aprovação de todas as revisões libera o arquivo e rejeição cancela o documento. Consulte o catálogo do ambiente antes de registrar eventos de identidade; sandbox e produção podem disponibilizar recursos em momentos diferentes. Não use dados biométricos ou destinatários reais sem autorização.
 
 ## Aceitação OAuth
 

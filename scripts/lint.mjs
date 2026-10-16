@@ -19,7 +19,7 @@ for (const path of files('.')) {
     const text = readFileSync(path, 'utf8');
     JSON.parse(text);
     for (const email of text.matchAll(/[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})/g)) {
-      assert.match(email[1], /^(?:example\.(?:com|org|net)|test\.com)$/, `Use fictitious JSON contacts: ${path}`);
+      assert.match(email[1], /^example\.(?:com|org|net)$/, `Use fictitious JSON contacts: ${path}`);
     }
     checked++;
   }
@@ -27,7 +27,7 @@ for (const path of files('.')) {
     const text = readFileSync(path, 'utf8');
     assert.ok(text.trim(), `Empty document: ${path}`);
     for (const email of text.matchAll(/[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})/g)) {
-      assert.match(email[1], /^(?:example\.(?:com|org|net)|test\.com)$/, `Use fictitious contacts: ${path}`);
+      assert.match(email[1], /^example\.(?:com|org|net)$/, `Use fictitious contacts: ${path}`);
     }
     for (const [, target] of text.matchAll(/\]\(([^)]+)\)/g)) {
       if (target.startsWith('#')) continue;

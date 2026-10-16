@@ -6,7 +6,7 @@ import { contract } from './actions.js';
 
 const SECRET_PATTERN = /^whsec_[A-Za-z0-9+/]+={0,2}$/;
 const sameEvents = (saved: string[], requested: string[]) =>
-  saved.length === requested.length && saved.every(event => requested.includes(event));
+  saved.length === requested.length && requested.every(event => saved.includes(event));
 
 export interface Subscription {
   url: string | null;
@@ -59,7 +59,7 @@ export async function registerSubscription(client: AssinafyClient, input: Subscr
   const result = await client.envelope<Subscription>('PUT', await client.accountPath('/webhooks/subscriptions'), { json: input });
   invariant(record(result.data) && result.data.url === input.url && result.data.is_active === true &&
     result.data.email === input.email &&
-    Array.isArray(result.data.events) && sameEvents(result.data.events, input.events), 'INVALID_RESPONSE', 'The saved subscription differs from the request; inspect it before continuing.');
+    Array.isArray(result.data.events) && sameEvents(result.data.events, input.events), 'INVALID_RESPONSE', 'The saved subscription differs from the request; inspect it before continuing.', { outcomeUnknown: true });
   return result.data;
 }
 
@@ -68,6 +68,8 @@ const documentEvents = new Set([
   'document_ready', 'signature_requested', 'signer_viewed_document', 'signer_signed_document',
   'signer_rejected_document', 'user_rejected_document', 'document_processing_failed',
   'signer_email_verified', 'signer_whatsapp_verified', 'signer_data_confirmed',
+  'signer_identity_verified', 'signer_identity_verification_failed', 'signer_identity_review_required',
+  'signer_identity_review_approved', 'signer_identity_review_rejected',
 ]);
 
 /** Shapes the current Assinafy activity envelope. This does not authenticate a webhook or store deduplication state. */
@@ -101,6 +103,8 @@ export interface WebhookEndpoint extends Subscription {
   signing_enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** Returned only when creating an endpoint with signing enabled; store securely. */
+  secret?: string;
 }
 export interface WebhookEndpointInput {
   url: string;
@@ -110,13 +114,14 @@ export interface WebhookEndpointInput {
   is_active?: boolean;
   signing_enabled?: boolean;
 }
-function endpoint(value: unknown): WebhookEndpoint {
+function endpoint(value: unknown, outcomeUnknown = false): WebhookEndpoint {
   invariant(record(value) && typeof value.id === 'string' && ID_PATTERN.test(value.id) &&
     typeof value.url === 'string' && typeof value.email === 'string' && (value.name === null || typeof value.name === 'string') &&
     Array.isArray(value.events) && value.events.every(event => typeof event === 'string') &&
     typeof value.is_active === 'boolean' && typeof value.signing_enabled === 'boolean' &&
-    typeof value.created_at === 'string' && typeof value.updated_at === 'string',
-  'INVALID_RESPONSE', 'Unexpected webhook endpoint response.');
+    typeof value.created_at === 'string' && typeof value.updated_at === 'string' &&
+    (value.secret === undefined || typeof value.secret === 'string' && SECRET_PATTERN.test(value.secret)),
+  'INVALID_RESPONSE', 'Unexpected webhook endpoint response.', { outcomeUnknown });
   return value as unknown as WebhookEndpoint;
 }
 async function validateEndpointInput(client: AssinafyClient, input: unknown, schema: Schema): Promise<void> {
@@ -132,7 +137,7 @@ async function validateEndpointInput(client: AssinafyClient, input: unknown, sch
 export async function listWebhookEndpoints(client: AssinafyClient): Promise<WebhookEndpoint[]> {
   const rows = await client.get<unknown>(await client.accountPath('/webhooks/endpoints'));
   invariant(Array.isArray(rows), 'INVALID_RESPONSE', 'Expected a webhook endpoint list.');
-  return rows.map(endpoint);
+  return rows.map(row => endpoint(row));
 }
 export async function registerWebhookEndpoint(client: AssinafyClient, input: WebhookEndpointInput): Promise<WebhookEndpoint> {
   await validateEndpointInput(client, input, contract.webhookEndpointInput as Schema);
@@ -144,28 +149,28 @@ export async function registerWebhookEndpoint(client: AssinafyClient, input: Web
     invariant(matches(current), 'EXISTING_SUBSCRIPTION', 'This URL already has different settings. Update its endpoint explicitly.');
     return current;
   }
-  const result = endpoint(await client.post(await client.accountPath('/webhooks/endpoints'), input));
-  invariant(matches(result), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.');
+  const result = endpoint(await client.post(await client.accountPath('/webhooks/endpoints'), input), true);
+  invariant(matches(result), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.', { outcomeUnknown: true });
   return result;
 }
 export async function updateWebhookEndpoint(client: AssinafyClient, endpointId: string, input: Partial<WebhookEndpointInput>): Promise<WebhookEndpoint> {
   id(endpointId, 'Endpoint ID');
   await validateEndpointInput(client, input, contract.webhookEndpointUpdateInput as Schema);
-  const result = endpoint((await client.envelope('PUT', await client.accountPath(`/webhooks/endpoints/${endpointId}`), { json: input })).data);
+  const result = endpoint((await client.envelope('PUT', await client.accountPath(`/webhooks/endpoints/${endpointId}`), { json: input })).data, true);
   invariant(result.id === endpointId && Object.entries(input).every(([key, value]) => key === 'events' ?
     sameEvents(result.events, value as string[]) :
-    result[key as keyof WebhookEndpoint] === value), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.');
+    result[key as keyof WebhookEndpoint] === value), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.', { outcomeUnknown: true });
   return result;
 }
 export async function deleteWebhookEndpoint(client: AssinafyClient, endpointId: string): Promise<void> {
   const { data } = await client.envelope('DELETE', await client.accountPath(`/webhooks/endpoints/${id(endpointId, 'Endpoint ID')}`));
-  invariant(Array.isArray(data) && data.length === 0, 'INVALID_RESPONSE', 'Unexpected endpoint deletion response.');
+  invariant(Array.isArray(data) && data.length === 0, 'INVALID_RESPONSE', 'Unexpected endpoint deletion response.', { outcomeUnknown: true });
 }
 export async function getWebhookSecret(client: AssinafyClient, endpointId: string, rotate = false): Promise<string> {
   const suffix = `/webhooks/endpoints/${id(endpointId, 'Endpoint ID')}/secret${rotate ? '/rotate' : ''}`;
   const { data } = await client.envelope(rotate ? 'POST' : 'GET', await client.accountPath(suffix));
   invariant(record(data) && typeof data.secret === 'string' && SECRET_PATTERN.test(data.secret),
-    'INVALID_RESPONSE', 'Unexpected webhook signing secret.');
+    'INVALID_RESPONSE', 'Unexpected webhook signing secret.', { outcomeUnknown: rotate });
   return data.secret;
 }
 

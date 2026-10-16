@@ -19,8 +19,8 @@ export class IntegrationError extends Error {
     this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
-export function invariant(value: unknown, code: string, message: string): asserts value {
-  if (!value) throw new IntegrationError(code, message);
+export function invariant(value: unknown, code: string, message: string, options: { outcomeUnknown?: boolean } = {}): asserts value {
+  if (!value) throw new IntegrationError(code, message, options);
 }
 export function unknownWriteOutcome(): IntegrationError {
   return new IntegrationError('MUTATION_OUTCOME_UNKNOWN',

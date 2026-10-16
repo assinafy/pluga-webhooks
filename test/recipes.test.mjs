@@ -17,11 +17,21 @@ test('every action has a production recipe with an actual nested JSON body', () 
   }
 });
 test('public recipes and event fixtures remain identical and new endpoint inputs match their contracts', async () => {
+  assert.deepEqual(JSON.parse(await readFile(new URL('../examples/requests.json', import.meta.url))), worksheet);
   assert.deepEqual(JSON.parse(await readFile(new URL('../public-guide/examples/requests.json', import.meta.url))), worksheet);
   assert.deepEqual(JSON.parse(await readFile(new URL('../public-guide/examples/document-ready.json', import.meta.url))),
     JSON.parse(await readFile(new URL('../examples/document-ready.json', import.meta.url))));
   validate(worksheet.requests.find(row => row.id === 'register_webhook_endpoint').body, contract.webhookEndpointInput, contract.schemas);
   validate(worksheet.requests.find(row => row.id === 'update_webhook_endpoint').body, contract.webhookEndpointUpdateInput, contract.schemas);
+});
+test('all action recipe variants use supported nested request fields', () => {
+  for (const row of worksheet.requests) {
+    const action = Object.values(contract.actions).find(action => action.method === row.method && action.path === row.path);
+    if (action) validate(row.body ?? {}, action.input, contract.schemas);
+  }
+  for (const id of ['request_signatures_biometric', 'create_document_from_template_biometric']) {
+    assert.equal(worksheet.requests.find(row => row.id === id).body.signers[0].verification_method, 'IdDocumentFaceMatchBasic');
+  }
 });
 test('documented full action request examples conform to the request schemas', async () => {
   const reference = await readFile(new URL('../docs/API.md', import.meta.url), 'utf8');

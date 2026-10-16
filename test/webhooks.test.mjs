@@ -48,9 +48,12 @@ test('subscription writes never retry on transport failure', async () => {
   await assert.rejects(registerSubscription(client(m), subscription), hasCode('MUTATION_OUTCOME_UNKNOWN')); m.done();
 });
 test('a misleading successful save is detected', async () => {
-  const m = mock([workspaceStep(), { response: ok(null) }, { response: ok(subscription.events.map(id => ({ id }))) },
-    { response: ok({ ...subscription, events: [] }) }]);
-  await assert.rejects(registerSubscription(client(m), subscription), hasCode('INVALID_RESPONSE')); m.done();
+  for (const events of [[], ['document_ready', 'document_ready']]) {
+    const m = mock([workspaceStep(), { response: ok(null) }, { response: ok(subscription.events.map(id => ({ id }))) },
+      { response: ok({ ...subscription, events }) }]);
+    await assert.rejects(registerSubscription(client(m), subscription), error =>
+      error.code === 'INVALID_RESPONSE' && error.outcomeUnknown && !error.safeToRetry); m.done();
+  }
 });
 test('webhook model yields stable deduplication key and document ID, without private payload fields', () => {
   const actual = normalizeEvent({ ...event, future_field: true, payload: { signer_email: 'private@example.com' } }, 'workspace_example');
