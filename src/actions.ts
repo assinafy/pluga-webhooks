@@ -51,6 +51,10 @@ function validateSigning(rows: Record<string, unknown>[]): void {
       'INVALID_STEPS', 'Each digital certificate signer must be alone in its signing step.');
   }
 }
+function validateDigitalCertificateMethod(rows: Record<string, unknown>[], method: unknown): void {
+  invariant(method === 'virtual' || rows.every(row => row.verification_method !== 'DigitalCertificate'),
+    'DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL', 'Digital certificate signers require a virtual assignment without placed fields.');
+}
 async function verifyContacts(client: AssinafyClient, rows: Record<string, unknown>[], signingRows: Record<string, unknown>[], copies: string[]): Promise<void> {
   const requested = [...rows.map(row => id(row.id, 'Signer ID')), ...copies.map(value => id(value, 'Copy receiver ID'))];
   const existing = new Map((await client.list<Resource>(await client.accountPath('/signers'))).map(row => [row.id, row]));
@@ -102,9 +106,10 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
     const signingRoles = new Set(nonEditors.filter(role => String(role.assignment_type).toLowerCase() === 'signer').map(role => role.id));
     signingRows = rows.filter(row => signingRoles.has(row.role_id));
     validateSigning(signingRows);
+    const placements = objectRows(selected.pages ?? []).flatMap(page => objectRows(page.fields ?? []));
+    validateDigitalCertificateMethod(signingRows, placements.some(field => signingRoles.has(field.role_id)) ? 'collect' : 'virtual');
     const editorRoles = new Set(roles.filter(role => String(role.assignment_type).toLowerCase() === 'editor').map(role => role.id));
-    const editorIds = new Set(objectRows(selected.pages ?? []).flatMap(page => objectRows(page.fields ?? []))
-      .filter(field => editorRoles.has(field.role_id)).map(field => field.field_id));
+    const editorIds = new Set(placements.filter(field => editorRoles.has(field.role_id)).map(field => field.field_id));
     const fields = objectRows(body.editor_fields ?? []);
     invariant(fields.every(field => editorIds.has(field.field_id)) && new Set(fields.map(field => field.field_id)).size === fields.length,
       'INVALID_EDITOR_FIELDS', 'Use unique editor field IDs from the selected template.');
@@ -112,6 +117,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
     path = await client.accountPath(`/templates/${templateId}/documents`);
   } else {
     validateSigning(rows);
+    validateDigitalCertificateMethod(rows, body.method);
     invariant(new Set(rows.map(row => row.id)).size === rows.length, 'INVALID_SIGNERS', 'Do not repeat signer IDs.');
     const documentId = id(input.document_id, 'Document ID');
     const selected = await document(client, documentId);

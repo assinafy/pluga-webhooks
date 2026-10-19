@@ -11,7 +11,8 @@ const entries = [{ page_id: 'page1', fields: [{ signer_id: signer.id, field_id: 
 
 for (const flow of ['template', 'virtual', 'collect']) for (const verification of methods) {
   for (const notification of ['Email', 'Whatsapp', undefined]) {
-    const allowed = !notification || ['DigitalCertificate', 'IdDocumentFaceMatchBasic'].includes(verification) || notification === verification;
+    const virtualCertificate = verification !== 'DigitalCertificate' || flow === 'virtual';
+    const allowed = virtualCertificate && (!notification || ['DigitalCertificate', 'IdDocumentFaceMatchBasic'].includes(verification) || notification === verification);
     test(`${flow}: ${verification} with ${notification ?? 'inferred'} notification ${allowed ? 'sends' : 'is rejected'}`, async () => {
       const row = { id: signer.id, verification_method: verification,
         ...(notification ? { notification_methods: [notification] } : {}), ...(flow === 'template' ? { role_id: 'customer' } : {}) };
@@ -25,11 +26,19 @@ for (const flow of ['template', 'virtual', 'collect']) for (const verification o
       const call = runAction(flow === 'template' ? 'create_document_from_template' : 'request_signatures', new AssinafyClient(credentials, m.runtime),
         { ...(flow === 'template' ? { template_id: template.id } : { document_id: document.id }), body });
       if (allowed) assert.deepEqual(await call, result);
-      else await assert.rejects(call, hasCode('INVALID_NOTIFICATION'));
+      else await assert.rejects(call, hasCode(virtualCertificate ? 'INVALID_NOTIFICATION' : 'DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL'));
       m.done();
     });
   }
 }
+
+test('template without signer placements supports a digital certificate signer', async () => {
+  const selected = { ...template, pages: [{ fields: template.pages[0].fields.filter(field => field.role_id === 'editor') }] };
+  const body = { signers: [{ id: signer.id, role_id: 'customer', verification_method: 'DigitalCertificate' }],
+    editor_fields: [{ field_id: 'price', value: 'R$ 20' }] };
+  const m = mock([workspaceStep(), { response: ok([selected]) }, { response: ok([contact]) }, { response: ok({ id: 'created1' }) }]);
+  await runAction('create_document_from_template', new AssinafyClient(credentials, m.runtime), { template_id: template.id, body }); m.done();
+});
 
 for (const flow of ['template', 'virtual']) for (const government_id of [undefined, null, '', '12ABC34501DE35', '12345678000195', '390.533.447-05']) {
   test(`${flow}: biometric signing requires a normalized CPF: ${government_id}`, async () => {

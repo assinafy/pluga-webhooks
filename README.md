@@ -147,10 +147,12 @@ Para documento existente, `POST /documents/DOCUMENT_ID/assignments`:
 |---|---|---|
 | `Email` | `Email` | Contato com e-mail |
 | `Whatsapp` | `Whatsapp` | Número E.164; recurso do plano e créditos |
-| `DigitalCertificate` | `Email` ou `Whatsapp` | CPF/CNPJ, recurso de certificado digital, ICP-Brasil A1/A3; um signatário por passo |
+| `DigitalCertificate` | `Email` ou `Whatsapp` | `method: "virtual"`; CPF/CNPJ, recurso de certificado digital, ICP-Brasil A1/A3; um signatário por passo |
 | `IdDocumentFaceMatchBasic` | `Email` ou `Whatsapp` | CPF, recurso ID Document + Face Match; foto do documento, foto com o documento e prova de vida |
 
 `notification_methods` aceita exatamente um canal. Se um lado for omitido, a API infere o outro; se ambos forem omitidos, usa Email. A1/A3 são certificados usados pelo signatário via Web PKI; o código enviado à API é `DigitalCertificate`. Consulte os endpoints de estimativa de custo da [API](https://api.assinafy.com.br/v1/docs) antes de envios que consumam créditos.
+
+`DigitalCertificate` exige assignment `virtual`. O cliente rejeita `request_signatures` com `method: "collect"` e também `create_document_from_template` quando o modelo contém campos posicionados para papéis Signer, usando o código `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL` antes de enviar ou cobrar a solicitação.
 
 Biometria usa `verification_method: "IdDocumentFaceMatchBasic"` nas duas ações de envio. O cliente exige CPF normalizado no contato e o canal escolhido; a API aplica disponibilidade do recurso, validade do CPF e cobrança. O signatário dá consentimento e realiza a captura na interface de assinatura. Não envie imagens ou dados biométricos no payload da Pluga.
 

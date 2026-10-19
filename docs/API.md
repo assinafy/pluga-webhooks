@@ -72,10 +72,12 @@ Os mesmos valores são aceitos em `signers` de `request_signatures` (virtual/col
 |---|---|---|
 | `Email` | `["Email"]` | E-mail válido |
 | `Whatsapp` | `["Whatsapp"]` | whatsapp_phone_number E.164; plano/créditos |
-| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | Canal correspondente e CPF/CNPJ normalizado; recurso ICP-Brasil A1/A3; sozinho em seu passo |
+| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | `method: "virtual"`, canal correspondente e CPF/CNPJ normalizado; recurso ICP-Brasil A1/A3; sozinho em seu passo |
 | `IdDocumentFaceMatchBasic` | `["Email"]` ou `["Whatsapp"]` | Canal correspondente e CPF normalizado; recurso ID Document + Face Match |
 
 Exatamente um canal por signatário. Sem os dois campos, usa Email. Só o canal infere a verificação correspondente; só a verificação infere o canal correspondente para Email/Whatsapp e Email para certificado/biometria. O cliente verifica a forma do contato; a API valida CPF/CNPJ, disponibilidade do recurso e créditos. Consulte POST `/documents/DOCUMENT_ID/assignments/estimate-cost` ou POST `/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents/estimate-cost` antes de envios cobrados.
+
+`DigitalCertificate` exige assignment `virtual`. Em `request_signatures`, use `method: "virtual"`. Em `create_document_from_template`, use um modelo sem campos posicionados para papéis Signer; esses campos fazem o modelo gerar um assignment `collect`. O SDK rejeita as duas combinações incompatíveis antes do envio com `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL`.
 
 ### Biometria e revisão de identidade
 
@@ -251,7 +253,7 @@ Respostas de gravação incompatíveis com a configuração solicitada também t
 - `OAUTH_OUTCOME_UNKNOWN`: troca possivelmente concluída; não reutilize code/refresh token automaticamente.
 - `INVALID_INPUT`, `INVALID_ID`, `INVALID_CREDENTIALS`, `INVALID_RUNTIME`: corrigir configuração/input.
 - `WORKSPACE_ACCESS_DENIED`, `SIGNER_NOT_FOUND`, `INVALID_CONTACT`, `INVALID_GOVERNMENT_ID`: corrigir conexão ou contato.
-- `TEMPLATE_NOT_READY`, `INVALID_ROLE_MAPPING`, `INVALID_EDITOR_FIELDS`, `DOCUMENT_NOT_READY`, `ALREADY_SENT`, `INVALID_ENTRIES`: corrigir estado ou mapeamento.
+- `TEMPLATE_NOT_READY`, `INVALID_ROLE_MAPPING`, `INVALID_EDITOR_FIELDS`, `DOCUMENT_NOT_READY`, `ALREADY_SENT`, `INVALID_ENTRIES`, `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL`: corrigir estado, método ou mapeamento.
 - `INVALID_RESPONSE`, `PAGINATION_LIMIT`, `PAGINATION_INCONSISTENT`, `RESPONSE_TOO_LARGE`, `REDIRECT_BLOCKED`, `INVALID_FILE_RESPONSE`, `TRANSPORT_ERROR`: revisar resposta/limites/transporte.
 - `INVALID_WEBHOOK_SIGNATURE`, `INVALID_EVENT`, `UNKNOWN_EVENT`, `EXISTING_SUBSCRIPTION`: corrigir receptor/configuração.
 - `INVALID_OAUTH_CALLBACK`, `OAUTH_DENIED`, `OAUTH_ERROR`: interromper fluxo e reconectar/corrigir aplicação.

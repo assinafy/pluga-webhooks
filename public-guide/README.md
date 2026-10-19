@@ -205,10 +205,12 @@ As duas chamadas de envio aceitam os mesmos métodos em `signers`. Use exatament
 |---|---|---|
 | `Email` | `["Email"]` | E-mail |
 | `Whatsapp` | `["Whatsapp"]` | Número E.164; recurso/créditos |
-| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | CPF/CNPJ, certificado ICP-Brasil A1/A3 e recurso do plano; um signatário por passo |
+| `DigitalCertificate` | `["Email"]` ou `["Whatsapp"]` | Assignment `virtual`, CPF/CNPJ, certificado ICP-Brasil A1/A3 e recurso do plano; um signatário por passo |
 | `IdDocumentFaceMatchBasic` | `["Email"]` ou `["Whatsapp"]` | CPF, recurso ID Document + Face Match; captura consentida pelo signatário |
 
 Biometria usa foto do documento, foto com o documento e prova de vida na interface da Assinafy. Não envie imagens ou dados biométricos à Pluga. Se a verificação ficar InReview, o signatário ainda pode assinar; o documento aguarda `pending_identity_review` até a conta aprovar todas as revisões. Rejeitar uma revisão cancela o documento. Confirme sempre `certificated` antes de baixar o arquivo final. Consulte o catálogo do ambiente para eventos de identidade e os endpoints de estimativa de custo antes de envios cobrados.
+
+`DigitalCertificate` não funciona com `collect`: use `method: "virtual"`. No envio por modelo, escolha um modelo sem campos posicionados para papéis Signer; esses campos geram um assignment `collect`. O cliente recusa as duas combinações com `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL` antes do envio.
 
 ## 6. Evite efeitos duplicados
 
