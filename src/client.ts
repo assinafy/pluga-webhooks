@@ -45,7 +45,7 @@ export class AssinafyClient {
     for (const origin of runtime.trustedDownloadOrigins ?? []) validateExternalOrigin(origin);
   }
   #url(path: string, query?: Query): string {
-    invariant(/^\/(accounts|documents|webhooks)(\/|$)/.test(path) && !/[?#\\]/.test(path) && !/%|\/\.|\/\//.test(path),
+    invariant(/^\/(accounts|documents|webhooks)(\/|$)/.test(path) && !/[?#\\\x00-\x20\x7f]/.test(path) && !/%|\/\.|\/\//.test(path),
       'UNSAFE_PATH', 'Only application resource paths are accepted.');
     const url = new URL(this.baseUrl + path);
     for (const [key, value] of Object.entries(query ?? {})) {
@@ -117,7 +117,7 @@ export class AssinafyClient {
     try { id(data.id, 'Created resource ID'); } catch { throw unknownWriteOutcome(); }
     return data;
   }
-  async list<T extends { id: string | number }>(path: string, query: Query = {}): Promise<T[]> {
+  async list<T extends object>(path: string, query: Query = {}, idKey: 'id' | 'document_id' = 'id'): Promise<T[]> {
     const result = new Map<string | number, T>();
     const signatures = new Set<string>();
     const maxPages = this.runtime.maxPages ?? 20;
@@ -125,13 +125,14 @@ export class AssinafyClient {
       const { data: rows, headers } = await this.envelope<T[]>('GET', path,
         { query: { ...query, page, 'per-page': 50 } });
       invariant(Array.isArray(rows), 'INVALID_RESPONSE', 'Assinafy did not return a list.');
-      for (const row of rows) invariant(record(row) && (typeof row.id === 'string' ? ID_PATTERN.test(row.id) :
-        Number.isSafeInteger(row.id) && Number(row.id) > 0), 'INVALID_RESPONSE', 'A list entry has no valid identifier.');
+      for (const row of rows) invariant(record(row) && (typeof row[idKey] === 'string' ? ID_PATTERN.test(row[idKey]) :
+        Number.isSafeInteger(row[idKey]) && Number(row[idKey]) > 0), 'INVALID_RESPONSE', 'A list entry has no valid identifier.');
+      const key = (row: T) => (row as Record<string, unknown>)[idKey] as string | number;
       const rawPages = headers.get('x-pagination-page-count');
       const pages = rawPages === null ? undefined : Number(rawPages);
       if (pages !== undefined) invariant(Number.isInteger(pages) && pages >= 0, 'INVALID_RESPONSE', 'Invalid pagination metadata.');
       invariant(pages !== 0 || rows.length === 0, 'PAGINATION_INCONSISTENT', 'Records were returned for an empty pagination range.');
-      const signature = JSON.stringify(rows.map(row => row.id));
+      const signature = JSON.stringify(rows.map(key));
       const repeated = signatures.has(signature);
       // Some deployments repeat the final page when requesting beyond the end.
       if (repeated) {
@@ -140,7 +141,7 @@ export class AssinafyClient {
         return [...result.values()];
       }
       signatures.add(signature);
-      for (const row of rows) result.set(row.id, row);
+      for (const row of rows) result.set(key(row), row);
       if (pages !== undefined ? page >= pages : rows.length < 50) return [...result.values()];
       invariant(rows.length > 0, 'PAGINATION_INCONSISTENT', 'An empty page appeared before the reported end.');
     }

@@ -40,7 +40,7 @@ test('workspace reads coalesce within one client; credentials never cross client
 test('URL and path injection cannot send credentials elsewhere', async () => {
   const m = mock([]); const c = new AssinafyClient(credentials, m.runtime);
   for (const path of ['https://evil.example/accounts', '//evil.example/accounts', '/documents/../accounts',
-    '/documents/%2e%2e/accounts', '/documents/test?leak=1', '/accounts\\evil']) await assert.rejects(c.get(path), hasCode('UNSAFE_PATH'));
+    '/documents/%2e%2e/accounts', '/documents/\t../oauth/token', '/documents/\r../oauth/token', '/documents/test?leak=1', '/accounts\\evil']) await assert.rejects(c.get(path), hasCode('UNSAFE_PATH'));
   m.done();
 });
 test('pagination follows page-count headers with per-page=50', async () => {

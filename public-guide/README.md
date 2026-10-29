@@ -43,7 +43,7 @@ Insira a chave somente nos headers da conexão/requisição. Não use a chave na
 
 *Tela real da conexão usada no teste. A captura mostra uma ação Webhooks simples; para ações com listas de signatários, use HTTP Request no modo JSON conforme o passo 5.*
 
-O evento `document_ready` informa que todas as assinaturas foram concluídas. Para acompanhar cada assinatura individual, use `signer_signed_document` em um fluxo separado.
+O evento `document_ready` informa que o documento foi certificado, após assinaturas e revisões de identidade necessárias. Para acompanhar cada assinatura individual, use `signer_signed_document` em um fluxo separado.
 
 ## 3. Configure o webhook na Assinafy
 
@@ -105,9 +105,9 @@ O envelope da API guarda o registro em `data`. Algumas ações da Pluga adiciona
 
 A Assinafy suporta assinatura Standard Webhooks por endpoint (signing_enabled). A URL privada do receptor e o filtro de workspace não verificam essa assinatura. Um receptor que tenha acesso ao corpo original e aos headers pode verificar HMAC-SHA256 antes de encaminhar o evento à Pluga. A consulta autenticada confirma o documento e seu estado atual. Não autorize operações usando apenas os dados recebidos pelo webhook.
 
-Criar um endpoint com `signing_enabled: true` retorna um `secret` que deve ser guardado imediatamente no receptor. Listas/consultas de endpoints não o retornam. Consultar ou rotacionar esse segredo depois exige API key; com OAuth, perder o segredo exige excluir explicitamente o endpoint e criar outro.
+Criar um endpoint com `signing_enabled: true` retorna um `secret` que deve ser guardado imediatamente no receptor. Listas/consultas de endpoints não o retornam. Consultar esse segredo depois exige API key; OAuth com webhooks:write pode rotacioná-lo e guardar o novo segredo. PUT que habilita assinatura também retorna o segredo uma vez.
 
-`document_ready` pode chegar antes de o PDF certificado estar disponível. Para baixar o arquivo final, aguarde o estado `certificated` e a disponibilidade do artefato. Os endpoints de download exigem autenticação; não são links públicos para compartilhar.
+`document_ready` é emitido após a certificação; confirme o estado atual por GET antes de agir. Para baixar o arquivo final, aguarde o estado `certificated` e a disponibilidade do artefato. Os endpoints de download exigem autenticação; não são links públicos para compartilhar.
 
 ### Três possibilidades de destino
 
@@ -150,7 +150,7 @@ Substitua o e-mail por um destinatário autorizado. Guarde o `data.id` retornado
 
 ### Criar e enviar documento de um modelo
 
-Consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo pronto e identifique seus papéis de assinatura. Cada papel não-editor deve receber um signatário.
+Consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo pronto e identifique seus papéis de assinatura. Cada papel Signer deve receber um signatário; CopyReceiver é opcional. A API também aceita email/name em vez de id, reutilizando ou criando o contato pelo e-mail.
 
 ```text
 POST https://api.assinafy.com.br/v1/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents
@@ -172,7 +172,7 @@ POST https://api.assinafy.com.br/v1/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/do
 
 Se houver campos do editor no modelo, inclua `editor_fields: [{"field_id":"FIELD_ID","value":"VALOR"}]`. Remova essa propriedade quando não houver campos a preencher.
 
-**A chamada cria o documento e inicia o fluxo de assinatura.** Confira destinatários e papéis no teste antes de ativar a automação.
+**A chamada cria o documento e inicia o fluxo de assinatura em segundo plano.** O retorno inicial é uploaded/assignment null; acompanhe pending_signature/assignment_created ou failed/document_processing_failed. Confira destinatários e papéis no teste antes de ativar a automação.
 
 ### Solicitar assinatura de um documento existente
 
@@ -211,6 +211,10 @@ As duas chamadas de envio aceitam os mesmos métodos em `signers`. Use exatament
 Biometria usa foto do documento, foto com o documento e prova de vida na interface da Assinafy. Não envie imagens ou dados biométricos à Pluga. Se a verificação ficar InReview, o signatário ainda pode assinar; o documento aguarda `pending_identity_review` até a conta aprovar todas as revisões. Rejeitar uma revisão cancela o documento. Confirme sempre `certificated` antes de baixar o arquivo final. Consulte o catálogo do ambiente para eventos de identidade e os endpoints de estimativa de custo antes de envios cobrados.
 
 `DigitalCertificate` não funciona com `collect`: use `method: "virtual"`. No envio por modelo, escolha um modelo sem campos posicionados para papéis Signer; esses campos geram um assignment `collect`. O cliente recusa as duas combinações com `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL` antes do envio.
+
+## Gestão de contratos
+
+Depois de criar o documento, use PUT `/accounts/ACCOUNT_ID/documents/DOCUMENT_ID/contract` para registrar contraparte, valor, vigência, renovação e referências ao CRM. Consulte os termos por GET no mesmo path; use updated_at da consulta como precondição de escrita. A lista GET `/accounts/ACCOUNT_ID/contracts` usa document_id como chave. Aditivos são documentos vinculados ao pai e aplicados após certificação. As receitas incluem consulta, edição, família, renovação e encerramento; veja [payloads e fluxo completo](../docs/CONTRACTS.md). Eventos document_contract_* permitem atualizar o destino após nova consulta autenticada.
 
 ## 6. Evite efeitos duplicados
 
@@ -259,4 +263,4 @@ PDFs e ZIPs finais foram baixados e conferidos diretamente pela API, fora da Plu
 - [HTTP Request na Pluga](https://pluga.co/ferramentas/http-request/integracao/)
 - Destinos propostos: [Google Sheets](https://pluga.co/ferramentas/google-sheets/integracao/), [Pipedrive](https://pluga.co/ferramentas/pipedrive/integracao/) e [Trello](https://pluga.co/ferramentas/trello/integracao/).
 
-Guia mantido pela Assinafy. Atualizado em 16 de outubro de 2026.
+Guia mantido pela Assinafy. Atualizado em 28 de outubro de 2026.

@@ -63,6 +63,13 @@ test('refresh sends each token once and preserves the newly rotated token', asyn
   } }]);
   assert.deepEqual(await refreshOAuthToken(app, 'refresh-test', m.runtime), rotated); m.done();
 });
+test('a refresh without a usable rotated token cannot be mistaken for a reusable connection', async () => {
+  for (const refresh_token of [undefined, null, '', 'invalid token']) {
+    const m = mock([{ response: response(metadata) }, { response: response({ ...token, refresh_token }) }]);
+    await assert.rejects(refreshOAuthToken(app, 'refresh-test', m.runtime), error => error.code === 'OAUTH_OUTCOME_UNKNOWN' && error.outcomeUnknown && !error.safeToRetry);
+    m.done();
+  }
+});
 test('revocation accepts the documented empty HTTP 200 response', async () => {
   const m = mock([{ response: response(metadata) }, { response: new Response(null), check(_, init) { assert.equal(init.body.get('token'), 'refresh-test'); } }]);
   await revokeOAuthToken(app, 'refresh-test', m.runtime); m.done();

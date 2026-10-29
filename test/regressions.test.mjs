@@ -114,6 +114,17 @@ test('endpoint partial update, secret read/rotation and deletion use their exact
   assert.equal(await getWebhookSecret(c, 'endpoint1'), secret); assert.equal(await getWebhookSecret(c, 'endpoint1', true), secret);
   await deleteWebhookEndpoint(c, 'endpoint1'); m.done();
 });
+test('OAuth can enable signing or rotate its secret and preserves endpoint pause state', async () => {
+  const secret = 'whsec_dGVzdC1rZXk=';
+  const updated = { ...endpoint, is_held: false, held_since: null, secret };
+  const m = mock([workspaceStep(), { response: ok(updated), check(_, init) {
+    assert.equal(init.method, 'PUT'); assert.equal(init.headers.Authorization, 'Bearer oauth-test');
+    assert.deepEqual(JSON.parse(init.body), { signing_enabled: true, is_active: true });
+  } }, { response: ok({ secret }), check(_, init) { assert.equal(init.method, 'POST'); assert.equal(init.headers.Authorization, 'Bearer oauth-test'); } }]);
+  const c = new AssinafyClient({ type: 'oauth2', accessToken: 'oauth-test', accountId: 'workspace1' }, m.runtime);
+  assert.deepEqual(await updateWebhookEndpoint(c, endpoint.id, { signing_enabled: true, is_active: true }), updated);
+  assert.equal(await getWebhookSecret(c, endpoint.id, true), secret); m.done();
+});
 test('unconfirmed endpoint writes and secret rotation report unknown outcomes without replay', async () => {
   const cases = [
     [() => [catalog(), workspaceStep(), { response: ok([]) }], { ...endpoint, updated_at: null }, c => registerWebhookEndpoint(c, input)],

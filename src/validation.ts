@@ -21,8 +21,12 @@ export interface Schema {
   enum?: readonly unknown[];
   format?: string;
   minimum?: number;
+  maximum?: number;
   exclusiveMinimum?: number | boolean;
   maxLength?: number;
+  maxItems?: number;
+  maxProperties?: number;
+  additionalProperties?: boolean | Schema;
 }
 /** Validate request contracts, including OpenAPI 3.1 bounds; reject unknown fields. */
 export function validate(value: unknown, schema: Schema, schemas: Record<string, Schema>, path = 'input'): void {
@@ -40,27 +44,34 @@ export function validate(value: unknown, schema: Schema, schemas: Record<string,
     return validate(value, { ...schema, type }, schemas, path);
   }
   if (schema.type === 'object') {
-    invariant(record(value), 'INVALID_INPUT', `${path}: expected an object.`);
+    invariant(record(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value)), 'INVALID_INPUT', `${path}: expected a plain object.`);
     const properties = schema.properties ?? {};
+    if (schema.maxProperties !== undefined) fail(Object.keys(value).length <= schema.maxProperties, 'too many properties.');
     for (const key of schema.required ?? []) fail(Object.hasOwn(value, key) && value[key] !== undefined, `${key} is required.`);
     for (const [key, item] of Object.entries(value)) {
-      fail(Object.hasOwn(properties, key), 'unsupported field.');
-      validate(item, properties[key]!, schemas, `${path}.${key}`);
+      const known = Object.hasOwn(properties, key);
+      fail(known || schema.additionalProperties, 'unsupported field.');
+      const child = known ? properties[key]! : schema.additionalProperties;
+      if (child !== true) validate(item, child as Schema, schemas, `${path}.${key}`);
     }
   } else if (schema.type === 'array') {
     invariant(Array.isArray(value), 'INVALID_INPUT', `${path}: expected an array.`);
+    if (schema.maxItems !== undefined) fail(value.length <= schema.maxItems, 'too many items.');
     for (const [index, item] of value.entries()) validate(item, schema.items ?? {}, schemas, `${path}[${index}]`);
   } else if (schema.type === 'string') {
     invariant(typeof value === 'string', 'INVALID_INPUT', `${path}: expected text.`);
     fail(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value), 'control characters are not allowed.');
-    if (schema.maxLength !== undefined) fail(value.length <= schema.maxLength, 'text is too long.');
+    if (schema.maxLength !== undefined) fail([...value].length <= schema.maxLength, 'text is too long.');
     if (schema.format === 'email') fail(EMAIL_PATTERN.test(value), 'invalid email address.');
+    if (schema.format === 'date') fail(/^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) &&
+      new Date(value).toISOString().slice(0, 10) === value, 'use a valid calendar date (YYYY-MM-DD).');
     if (schema.format === 'date-time') fail(/^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)) &&
       new Date(`${value.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === value.slice(0, 10), 'use a valid ISO 8601 date with timezone.');
   } else if (schema.type === 'number' || schema.type === 'integer') {
     invariant(typeof value === 'number' && Number.isFinite(value), 'INVALID_INPUT', `${path}: expected a number.`);
     if (schema.type === 'integer') fail(Number.isInteger(value), 'expected an integer.');
     if (schema.minimum !== undefined) fail(schema.exclusiveMinimum === true ? value > schema.minimum : value >= schema.minimum, 'number is out of range.');
+    if (schema.maximum !== undefined) fail(value <= schema.maximum, 'number is out of range.');
     if (typeof schema.exclusiveMinimum === 'number') fail(value > schema.exclusiveMinimum, 'number is out of range.');
   } else if (schema.type === 'boolean') fail(typeof value === 'boolean', 'expected a boolean.');
 }

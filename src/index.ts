@@ -8,3 +8,5 @@ export type { OAuthApplication, OAuthSession, OAuthTokens } from './oauth.js';
 export type { Credentials, Environment, Runtime, Resource, Account } from './types.js';
 export type { ActionId, ListId } from './actions.js';
 export type { Subscription, WebhookEndpoint, WebhookEndpointInput } from './webhooks.js';
+export { listContracts, getContract, getContractFamily, updateContract, renewContract, terminateContract } from './contracts.js';
+export type { ContractInput, ContractRenewal, ContractTermination, ContractFilters, DocumentContract, DocumentContractAmendment } from './contracts.js';

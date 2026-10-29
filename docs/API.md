@@ -13,9 +13,9 @@ Importe as funções e tipos de `dist/index.js` após `npm run build`. Os endpoi
 | `Resource` | `id` e todos os campos adicionais da API |
 | `ActionId` | `create_signer`, `get_document`, `create_document_from_template`, `request_signatures` |
 | `ListId` | `documents`, `signers`, `templates`, `fields`, `template_roles`, `editor_fields`, `document_pages` |
-| `Subscription` | `url`, `email`, `events`, `is_active`; URL/e-mail podem ser nulos na consulta legada |
+| `Subscription` | `url`, `email`, `events`, `is_active`, `is_held?`, `held_since?`; URL/e-mail podem ser nulos na consulta legada |
 | `WebhookEndpointInput` | `url`, `email`, `events`; opcionais `name`, `is_active`, `signing_enabled` |
-| `WebhookEndpoint` | Configuração, `id`, `name` nulo ou texto, `created_at`, `updated_at`; `secret?` somente na criação assinada |
+| `WebhookEndpoint` | Configuração, `id`, `name` nulo ou texto, `created_at`, `updated_at`; `is_held?`, `held_since?`; `secret?` na criação ou ao habilitar assinatura |
 | `OAuthApplication` | `clientId`, `clientSecret?`, `environment?` |
 | `OAuthSession` | Aplicação publicável, `redirectUri`, `state`, `codeVerifier`, `issuer`, `url`; o segredo não é copiado para a sessão criada |
 | `OAuthTokens` | `access_token`, `token_type: Bearer`, `expires_in`, `scope`, `refresh_token?`, `id_token?` |
@@ -33,7 +33,7 @@ O timeout padrão é 30 segundos; aceita 1–120000 ms. `maxPages` tem padrão 2
 | `envelope(method, path, options?)` | GET/POST/PUT/PATCH/DELETE; opções `query`, `json` ou `form` | `{data, headers}`; exige status do envelope igual ao HTTP |
 | `post(path, json)` | POST JSON autenticado | Recurso em `data`, com ID válido; use para criações |
 | `upload(path, form)` | POST multipart autenticado | Recurso criado em `data`, com ID válido; boundary gerado pelo transporte |
-| `list(path, query?)` | GET paginado com 50 registros por página | Lista completa deduplicada por ID; falha se páginas forem inconsistentes ou o orçamento acabar |
+| `list(path, query?, idKey?)` | GET paginado com 50 registros por página | Lista completa; `idKey` é `id` por padrão ou `document_id` para contratos; falha se páginas forem inconsistentes ou o orçamento acabar |
 | `binary(path)` | GET com negociação de JSON/PDF/ZIP/bytes | `Uint8Array`; rejeita páginas JSON/HTML e redirects não autorizados |
 
 Os paths de recursos aceitos começam com `/accounts`, `/documents` ou `/webhooks`. Não forneça URL completa nem path codificado. Os métodos de baixo nível não aplicam as regras de uma ação específica; `runAction` faz os preflights de documento, contatos, papéis e geometria. Não há replay automático.
@@ -47,7 +47,7 @@ const created = await client.upload(await client.accountPath('/documents'), form
 const bytes = await client.binary(`/documents/${created.id}/download/original`);
 ```
 
-A resposta do upload é um Document, inicialmente em processamento. O download retorna os bytes, sem envelope JSON. Escolha o artefato pela disponibilidade em `document.artifacts`: `original`, `certificated`, `certificate-page`, `pades` ou `bundle` em `/documents/DOCUMENT_ID/download/ARTEFATO`; `thumbnail` em `/documents/DOCUMENT_ID/thumbnail`, como JPEG.
+A resposta do upload é um Document, inicialmente em processamento, com pages e sem assignment. A criação por modelo inclui assignment (null inicialmente). has_contract aparece somente na consulta individual autenticada pelo workspace quando disponível; sua ausência significa desconhecido. O download retorna os bytes, sem envelope JSON. Escolha o artefato pela disponibilidade em `document.artifacts`: `original`, `certificated`, `certificate-page`, `pades` ou `bundle` em `/documents/DOCUMENT_ID/download/ARTEFATO`; `thumbnail` em `/documents/DOCUMENT_ID/thumbnail`, como JPEG.
 
 ## Ações e listas
 
@@ -86,12 +86,16 @@ Request completo para documento existente, POST `/documents/DOCUMENT_ID/assignme
 ```json
 {
   "method": "virtual",
-  "signers": [{
-    "id": "SIGNER_ID",
-    "verification_method": "IdDocumentFaceMatchBasic",
-    "notification_methods": ["Email"],
-    "step": 1
-  }]
+  "signers": [
+    {
+      "id": "SIGNER_ID",
+      "verification_method": "IdDocumentFaceMatchBasic",
+      "notification_methods": [
+        "Email"
+      ],
+      "step": 1
+    }
+  ]
 }
 ```
 
@@ -102,7 +106,10 @@ InReview permite ao signatário concluir a assinatura. Depois que todos assinam,
 Request completo da decisão:
 
 ```json
-{ "decision": "Approved", "note": "Conferência concluída pela conta." }
+{
+  "decision": "Approved",
+  "note": "Conferência concluída pela conta."
+}
 ```
 
 `decision` admite Approved ou Rejected; `note` é opcional, string de até 2000 caracteres ou null. GET e POST retornam o mesmo modelo completo de revisão; exemplo fictício após aprovação:
@@ -116,16 +123,44 @@ Request completo da decisão:
     "status": "Approved",
     "provider": "AssinafyVerify",
     "verification_method": "IdDocumentFaceMatchBasic",
-    "reason_codes": [{ "code": "NAME_MISMATCH", "description": "Nome requer conferência." }],
+    "reason_codes": [
+      {
+        "code": "NAME_MISMATCH",
+        "description": "Nome requer conferência."
+      }
+    ],
     "evidence_available": true,
-    "expected": { "name": "Signatário de exemplo", "cpf": "39053344705" },
-    "document": { "type": "CNH", "name": "Signatário de exemplo", "cpf": "39053344705" },
-    "matches": { "cpf": true, "name": 0.9, "birth_date": null },
-    "checks": [{ "name": "name", "result": "review", "score": 0.9, "reasons": ["NAME_MISMATCH"] }],
+    "expected": {
+      "name": "Signatário de exemplo",
+      "cpf": "39053344705"
+    },
+    "document": {
+      "type": "CNH",
+      "name": "Signatário de exemplo",
+      "cpf": "39053344705"
+    },
+    "matches": {
+      "cpf": true,
+      "name": 0.9,
+      "birth_date": null
+    },
+    "checks": [
+      {
+        "name": "name",
+        "result": "review",
+        "score": 0.9,
+        "reasons": [
+          "NAME_MISMATCH"
+        ]
+      }
+    ],
     "images": [],
     "ruleset_version": "EXAMPLE",
     "evidence_sha256": null,
-    "reviewed_by": { "id": "USER_ID", "name": "Revisor de exemplo" },
+    "reviewed_by": {
+      "id": "USER_ID",
+      "name": "Revisor de exemplo"
+    },
     "reviewed_at": "2026-10-16T12:00:00Z",
     "review_note": "Conferência concluída pela conta.",
     "completed_at": "2026-10-16T12:00:00Z"
@@ -137,6 +172,12 @@ Aprovar todas as revisões permite a certificação após as assinaturas. Reject
 
 `normalizeEvent` reconhece signer_identity_verified, signer_identity_verification_failed, signer_identity_review_required, signer_identity_review_approved e signer_identity_review_rejected como eventos de documento. O resultado reduzido contém document_id e não expõe evidências. Consulte o catálogo do ambiente antes de inscrever esses eventos.
 
+## Gestão de contratos
+
+`listContracts`, `getContract`, `getContractFamily`, `updateContract`, `renewContract` e `terminateContract`, com todos os tipos, filtros e payloads completos, estão em [CONTRACTS.md](CONTRACTS.md). As quatro ações de documentos continuam disponíveis em `runAction`.
+
+Templates aceitam `id` ou `email` por papel. Sem id, o e-mail reutiliza um contato do workspace; para um contato novo, envie name e, quando necessário, whatsapp_phone_number. Id prevalece se ambos forem enviados. Todos os papéis Signer e campos Editor são obrigatórios, CopyReceiver é opcional. Cada signer precisa de um campo em collect. A criação por modelo responde uploaded/assignment null e conclui o envio em segundo plano; acompanhe pending_signature ou failed.
+
 ## Webhooks
 
 | Função | Request | Response |
@@ -147,13 +188,15 @@ Aprovar todas as revisões permite a certificação após as assinaturas. Reject
 | `registerWebhookEndpoint(client, input)` | Consulta catálogo/lista, depois POST `/accounts/ACCOUNT_ID/webhooks/endpoints` | WebhookEndpoint; reutiliza URL idêntica ou preserva endpoints de outras integrações |
 | `updateWebhookEndpoint(client, endpointId, input)` | PUT `/accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID`; somente campos enviados | WebhookEndpoint atualizado |
 | `deleteWebhookEndpoint(client, endpointId)` | DELETE no endpoint selecionado | `void`; envelope HTTP contém `data: []` |
-| `getWebhookSecret(client, endpointId, rotate?)` | GET `.../secret`; com `rotate: true`, POST `.../secret/rotate` | String `whsec_...`; API key obrigatória no servidor; HTTP 400 quando a assinatura está desativada |
+| `getWebhookSecret(client, endpointId, rotate?)` | GET `.../secret`; com `rotate: true`, POST `.../secret/rotate` | String `whsec_...`; GET exige API key, rotação também aceita OAuth `webhooks:write`; HTTP 400 quando a assinatura está desativada |
 | `verifyWebhookSignature(rawBody, headers, secret, now?)` | Nenhuma; corpo UTF-8 original e objeto Headers | Promise void se válida; HMAC-SHA256 e janela de ±300 s |
 | `normalizeEvent(input, accountId, webhookId?)` | Nenhuma; objeto já autenticado, ID do workspace e header opcional | Evento reduzido descrito abaixo |
 
 Cadastro/atualização de endpoints exigem URL pública HTTPS neste cliente, e-mail e códigos de evento do catálogo. O serviço permite um endpoint gratuito ou até três em planos pagos; a API aplica o limite. `is_active` tem padrão true e `signing_enabled` false. Rotacionar o segredo invalida imediatamente o anterior. Não grave o segredo no payload de evento nem o encaminhe à Pluga.
 
-Criar com `signing_enabled: true` retorna `secret` uma vez, inclusive por OAuth. Guarde-o antes de concluir a instalação. Reutilizar um endpoint já existente retorna os dados de listagem, sem secret. Consultar/rotacionar o segredo depois exige API key; uma conexão OAuth que o perdeu precisa excluir explicitamente o endpoint e criar outro. PUT que habilita assinatura não retorna o segredo: configure assinatura na criação para integrações OAuth.
+Criar com `signing_enabled: true` retorna `secret` uma vez, inclusive por OAuth. Guarde-o antes de concluir a instalação. Reutilizar um endpoint já existente retorna os dados de listagem, sem secret. Consultar o segredo depois exige API key. A rotação aceita OAuth com `webhooks:write` e retorna o novo segredo; atualize o receptor imediatamente. PUT que habilita assinatura retorna o novo `secret` uma vez, inclusive por OAuth.
+
+As entregas têm até seis tentativas, cerca de dez minutos entre elas; conexão/timeout, 408, 429 e 5xx permitem retry. Dez falhas consecutivas pausam o endpoint (`is_held`, `held_since` em segundos Unix). Sondagens após 3, 15 e 60 minutos, depois a cada seis horas, recuperam a entrega. Alterar URL ou enviar is_active true também libera a pausa. O histórico é mantido por sete dias e inclui `webhook_id`, `attempt`, `kind` (scheduled/probe/manual) e `will_retry`.
 
 O helper legado exige `is_active: true` e configuração completa; alteração de configuração existente exige operação explícita no endpoint. Mutações devem ser feitas uma vez no setup, sem repetição em cada documento.
 
@@ -170,6 +213,40 @@ O helper legado exige `is_active: true` e configuração completa; alteração d
 ```
 
 Sem `webhookId`, a chave termina no ID da atividade. `document_id` aparece somente para eventos conhecidos de documento, com `object.type: Document`; `status` aparece quando fornecido. Eventos novos são tolerados sem inventar document ID. O helper não autentica mensagens nem implementa deduplicação persistente.
+
+### Histórico e reenvio
+
+Use `client.list(await client.accountPath('/webhooks'), query)` para GET de todas as entregas. Filtros: endpoint_id, event, delivered (texto true/false), from/to (segundos Unix). A API mantém sete dias. Request sem body; resposta HTTP de uma página:
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": [
+    {
+      "resource": "activity_dispatching_history",
+      "id": "10001",
+      "event": "document_ready",
+      "activity_id": 10001,
+      "endpoint_id": "ENDPOINT_ID",
+      "endpoint": "https://receiver.example.com/hook",
+      "payload": null,
+      "delivered": false,
+      "webhook_id": "MESSAGE_ID",
+      "attempt": 1,
+      "kind": "scheduled",
+      "will_retry": true,
+      "http_status": 503,
+      "response_body": null,
+      "error": null,
+      "created_at": "2026-10-28T12:00:00Z",
+      "updated_at": "2026-10-28T12:00:00Z"
+    }
+  ]
+}
+```
+
+Para reenviar uma entrega específica, use `client.envelope('POST', await client.accountPath('/webhooks/HISTORY_ID/retry'))`, sem body. Exige `webhooks:write` com OAuth. Retorna o mesmo modelo de item em data, com kind manual, inclusive se o endpoint estiver pausado. Sucesso libera a pausa. Essa chamada envia uma mensagem e pode disparar efeitos no destino; execute apenas de forma explícita. Nunca use `post` aqui, pois deployments legados podem retornar ID numérico.
 
 ## OAuth2
 
@@ -307,26 +384,18 @@ Response HTTP:
   "message": "",
   "data": {
     "resource": "document",
-    "id": "615601fab04c0a3147bb1246",
-    "account_id": "d199996981dbd199996981db",
+    "id": "DOCUMENT_ID",
+    "account_id": "ACCOUNT_ID",
     "template_id": null,
     "name": "document.pdf",
-    "status": "metadata_ready",
+    "status": "pending_signature",
     "artifacts": {
-      "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+      "original": "https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/download/original"
     },
     "is_closed": false,
-    "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+    "signing_url": "https://app.assinafy.com.br/sign/DOCUMENT_ID",
     "decline_reason": null,
-    "declined_by": {
-      "resource": "signer",
-      "id": "62d6ee35c7741ca4006b9e11",
-      "full_name": "John Signer",
-      "email": "signer@example.com",
-      "whatsapp_phone_number": "+5548999990000",
-      "government_id": "39053344705",
-      "has_accepted_terms": false
-    },
+    "declined_by": null,
     "tags": [
       {
         "id": "RESOURCE_ID",
@@ -335,84 +404,133 @@ Response HTTP:
     ],
     "assignment": {
       "resource": "assignment",
-      "id": "615606ef81d199996981dbce",
+      "id": "ASSIGNMENT_ID",
       "sender_email": "sender@example.com",
-      "method": "virtual",
+      "method": "collect",
       "expires_at": null,
       "message": "EXAMPLE",
       "signers": [
         {
           "resource": "signer",
-          "id": "62d6ee35c7741ca4006b9e11",
-          "full_name": "John Signer",
+          "id": "SIGNER_ID",
+          "full_name": "Signatário de exemplo",
           "email": "signer@example.com",
           "whatsapp_phone_number": "+5548999990000",
           "government_id": "39053344705",
-          "has_accepted_terms": false,
+          "has_accepted_terms": true,
           "verification_method": "Email",
           "notification_methods": [
             "Email"
           ],
           "step": 1,
           "notified": true,
-          "completed": true,
+          "identity_verification_status": null,
+          "completed": false,
           "notification_history": [
             {
               "event": "signature_request",
               "status": "sent",
-              "error_code": "EXAMPLE",
-              "error_message": "EXAMPLE",
-              "sent_at": "2026-07-07T12:00:00Z",
+              "error_code": null,
+              "error_message": null,
+              "sent_at": "2026-10-28T12:00:00Z",
               "failed_at": null
             }
           ]
         }
       ],
       "copy_receivers": [
-        {}
+        {
+          "resource": "signer",
+          "id": "COPY_RECEIVER_ID",
+          "full_name": "Signatário de exemplo",
+          "email": "copy@example.com",
+          "whatsapp_phone_number": "+5548999990000",
+          "government_id": "39053344705",
+          "has_accepted_terms": true
+        }
       ],
       "items": [
         {
-          "id": "RESOURCE_ID",
+          "id": "ITEM_ID",
           "page": {
-            "id": "615601faf166d6d1d8e7dc30",
+            "id": "PAGE_ID",
             "number": 1,
             "height": 2100,
             "width": 1275,
-            "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+            "download_url": "https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/pages/PAGE_ID/download"
           },
-          "signer": {},
-          "field": {},
-          "display_settings": {},
-          "value": {},
-          "completed": true
+          "signer": {
+            "resource": "signer",
+            "id": "SIGNER_ID",
+            "full_name": "Signatário de exemplo",
+            "email": "signer@example.com",
+            "whatsapp_phone_number": "+5548999990000",
+            "government_id": "39053344705",
+            "has_accepted_terms": true
+          },
+          "field": {
+            "resource": "field",
+            "id": "FIELD_ID",
+            "name": "Assinatura",
+            "type": "signature",
+            "regex": null,
+            "is_pre_defined": true,
+            "is_active": true,
+            "is_required": true,
+            "is_standard": true,
+            "is_read_only": false,
+            "is_visible": true
+          },
+          "display_settings": {
+            "left": 20,
+            "top": 30,
+            "width": 100,
+            "height": 50,
+            "fontSize": 20
+          },
+          "value": null,
+          "completed": false
         }
       ],
       "summary": {
         "signer_count": 1,
-        "completed_count": 1,
+        "completed_count": 0,
         "signers": [
-          {}
+          {
+            "resource": "signer",
+            "id": "SIGNER_ID",
+            "full_name": "Signatário de exemplo",
+            "email": "signer@example.com",
+            "whatsapp_phone_number": "+5548999990000",
+            "government_id": "39053344705",
+            "has_accepted_terms": true,
+            "completed": false
+          }
         ]
       },
       "signing_urls": [
         {
           "signer_id": "SIGNER_ID",
-          "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.com"
+          "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com"
         }
-      ]
+      ],
+      "document_id": "DOCUMENT_ID",
+      "created_at": "2026-10-28T12:00:00Z"
     },
     "pages": [
       {
-        "id": "615601faf166d6d1d8e7dc30",
+        "id": "PAGE_ID",
         "number": 1,
         "height": 2100,
         "width": 1275,
-        "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+        "download_url": "https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/pages/PAGE_ID/download"
       }
     ],
     "created_at": "2026-06-03T03:54:16Z",
-    "updated_at": "2026-06-03T03:54:16Z"
+    "updated_at": "2026-06-03T03:54:16Z",
+    "has_contract": false,
+    "verification_code": null,
+    "verification_url": null
   }
 }
 ```
@@ -433,7 +551,10 @@ Request JSON:
       "notification_methods": [
         "Email"
       ],
-      "step": 1
+      "step": 1,
+      "email": "signer@example.com",
+      "name": "Signatário de exemplo",
+      "whatsapp_phone_number": "+5548999990000"
     }
   ],
   "editor_fields": [
@@ -459,112 +580,30 @@ Response HTTP:
   "message": "",
   "data": {
     "resource": "document",
-    "id": "615601fab04c0a3147bb1246",
-    "account_id": "d199996981dbd199996981db",
-    "template_id": null,
+    "id": "DOCUMENT_ID",
+    "account_id": "ACCOUNT_ID",
+    "template_id": "TEMPLATE_ID",
     "name": "document.pdf",
-    "status": "metadata_ready",
+    "status": "uploaded",
     "artifacts": {
-      "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+      "original": "https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/download/original"
     },
     "is_closed": false,
-    "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+    "signing_url": "https://app.assinafy.com.br/sign/DOCUMENT_ID",
     "decline_reason": null,
-    "declined_by": {
-      "resource": "signer",
-      "id": "62d6ee35c7741ca4006b9e11",
-      "full_name": "John Signer",
-      "email": "signer@example.com",
-      "whatsapp_phone_number": "+5548999990000",
-      "government_id": "39053344705",
-      "has_accepted_terms": false
-    },
+    "declined_by": null,
     "tags": [
       {
         "id": "RESOURCE_ID",
         "name": "EXAMPLE"
       }
     ],
-    "assignment": {
-      "resource": "assignment",
-      "id": "615606ef81d199996981dbce",
-      "sender_email": "sender@example.com",
-      "method": "virtual",
-      "expires_at": null,
-      "message": "EXAMPLE",
-      "signers": [
-        {
-          "resource": "signer",
-          "id": "62d6ee35c7741ca4006b9e11",
-          "full_name": "John Signer",
-          "email": "signer@example.com",
-          "whatsapp_phone_number": "+5548999990000",
-          "government_id": "39053344705",
-          "has_accepted_terms": false,
-          "verification_method": "Email",
-          "notification_methods": [
-            "Email"
-          ],
-          "step": 1,
-          "notified": true,
-          "completed": true,
-          "notification_history": [
-            {
-              "event": "signature_request",
-              "status": "sent",
-              "error_code": "EXAMPLE",
-              "error_message": "EXAMPLE",
-              "sent_at": "2026-07-07T12:00:00Z",
-              "failed_at": null
-            }
-          ]
-        }
-      ],
-      "copy_receivers": [
-        {}
-      ],
-      "items": [
-        {
-          "id": "RESOURCE_ID",
-          "page": {
-            "id": "615601faf166d6d1d8e7dc30",
-            "number": 1,
-            "height": 2100,
-            "width": 1275,
-            "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
-          },
-          "signer": {},
-          "field": {},
-          "display_settings": {},
-          "value": {},
-          "completed": true
-        }
-      ],
-      "summary": {
-        "signer_count": 1,
-        "completed_count": 1,
-        "signers": [
-          {}
-        ]
-      },
-      "signing_urls": [
-        {
-          "signer_id": "SIGNER_ID",
-          "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.com"
-        }
-      ]
-    },
-    "pages": [
-      {
-        "id": "615601faf166d6d1d8e7dc30",
-        "number": 1,
-        "height": 2100,
-        "width": 1275,
-        "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
-      }
-    ],
+    "assignment": null,
+    "pages": [],
     "created_at": "2026-06-03T03:54:16Z",
-    "updated_at": "2026-06-03T03:54:16Z"
+    "updated_at": "2026-06-03T03:54:16Z",
+    "verification_code": null,
+    "verification_url": null
   }
 }
 ```
@@ -624,72 +663,118 @@ Response HTTP:
   "message": "",
   "data": {
     "resource": "assignment",
-    "id": "615606ef81d199996981dbce",
+    "id": "ASSIGNMENT_ID",
     "sender_email": "sender@example.com",
-    "method": "virtual",
+    "method": "collect",
     "expires_at": null,
     "message": "EXAMPLE",
     "signers": [
       {
         "resource": "signer",
-        "id": "62d6ee35c7741ca4006b9e11",
-        "full_name": "John Signer",
+        "id": "SIGNER_ID",
+        "full_name": "Signatário de exemplo",
         "email": "signer@example.com",
         "whatsapp_phone_number": "+5548999990000",
         "government_id": "39053344705",
-        "has_accepted_terms": false,
+        "has_accepted_terms": true,
         "verification_method": "Email",
         "notification_methods": [
           "Email"
         ],
         "step": 1,
         "notified": true,
-        "completed": true,
+        "identity_verification_status": null,
+        "completed": false,
         "notification_history": [
           {
             "event": "signature_request",
             "status": "sent",
-            "error_code": "EXAMPLE",
-            "error_message": "EXAMPLE",
-            "sent_at": "2026-07-07T12:00:00Z",
+            "error_code": null,
+            "error_message": null,
+            "sent_at": "2026-10-28T12:00:00Z",
             "failed_at": null
           }
         ]
       }
     ],
     "copy_receivers": [
-      {}
+      {
+        "resource": "signer",
+        "id": "COPY_RECEIVER_ID",
+        "full_name": "Signatário de exemplo",
+        "email": "copy@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "39053344705",
+        "has_accepted_terms": true
+      }
     ],
     "items": [
       {
-        "id": "RESOURCE_ID",
+        "id": "ITEM_ID",
         "page": {
-          "id": "615601faf166d6d1d8e7dc30",
+          "id": "PAGE_ID",
           "number": 1,
           "height": 2100,
           "width": 1275,
-          "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+          "download_url": "https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/pages/PAGE_ID/download"
         },
-        "signer": {},
-        "field": {},
-        "display_settings": {},
-        "value": {},
-        "completed": true
+        "signer": {
+          "resource": "signer",
+          "id": "SIGNER_ID",
+          "full_name": "Signatário de exemplo",
+          "email": "signer@example.com",
+          "whatsapp_phone_number": "+5548999990000",
+          "government_id": "39053344705",
+          "has_accepted_terms": true
+        },
+        "field": {
+          "resource": "field",
+          "id": "FIELD_ID",
+          "name": "Assinatura",
+          "type": "signature",
+          "regex": null,
+          "is_pre_defined": true,
+          "is_active": true,
+          "is_required": true,
+          "is_standard": true,
+          "is_read_only": false,
+          "is_visible": true
+        },
+        "display_settings": {
+          "left": 20,
+          "top": 30,
+          "width": 100,
+          "height": 50,
+          "fontSize": 20
+        },
+        "value": null,
+        "completed": false
       }
     ],
     "summary": {
       "signer_count": 1,
-      "completed_count": 1,
+      "completed_count": 0,
       "signers": [
-        {}
+        {
+          "resource": "signer",
+          "id": "SIGNER_ID",
+          "full_name": "Signatário de exemplo",
+          "email": "signer@example.com",
+          "whatsapp_phone_number": "+5548999990000",
+          "government_id": "39053344705",
+          "has_accepted_terms": true,
+          "completed": false
+        }
       ]
     },
     "signing_urls": [
       {
         "signer_id": "SIGNER_ID",
-        "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.com"
+        "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com"
       }
-    ]
+    ],
+    "document_id": "DOCUMENT_ID",
+    "created_at": "2026-10-28T12:00:00Z"
   }
 }
 ```
@@ -731,12 +816,15 @@ Response HTTP:
     "signing_enabled": true,
     "secret": "whsec_dGVzdC1rZXk=",
     "created_at": "2026-10-01T12:00:00Z",
-    "updated_at": "2026-10-01T12:00:00Z"
+    "updated_at": "2026-10-01T12:00:00Z",
+    "resource": "activity_event_subscription",
+    "is_held": false,
+    "held_since": null
   }
 }
 ```
 
-A lista de endpoints retorna o mesmo modelo sem secret em `data: [...]`, sem body de requisição. PUT pode enviar qualquer subconjunto do request acima, por exemplo `{ "is_active": false }`, e retorna o endpoint completo sem secret. DELETE não envia body e retorna `{ "status": 200, "message": "", "data": [] }`. GET/POST do segredo não envia body e retorna `{ "status": 200, "message": "", "data": { "secret": "whsec_dGVzdC1rZXk=" } }`.
+A lista de endpoints retorna o mesmo modelo sem secret em `data: [...]`, sem body de requisição. PUT pode enviar qualquer subconjunto do request acima, por exemplo `{ "is_active": false }`, e retorna o endpoint completo, com secret somente quando habilita assinatura. DELETE não envia body e retorna `{ "status": 200, "message": "", "data": [] }`. GET/POST do segredo não envia body e retorna `{ "status": 200, "message": "", "data": { "secret": "whsec_dGVzdC1rZXk=" } }`.
 
 ## Payloads de workspace, consultas e listas
 
@@ -753,21 +841,27 @@ X-Api-Key: <ASSINAFY_API_KEY>
 {
   "status": 200,
   "message": "",
-  "data": [{
-    "resource": "account",
-    "id": "ACCOUNT_ID",
-    "name": "Workspace de exemplo",
-    "primary_color": "aabbcc",
-    "secondary_color": "112233",
-    "notification_sender_type": "Account",
-    "roles": ["owner"],
-    "is_delete_allowed": true,
-    "created_at": "2026-10-01T12:00:00Z"
-  }]
+  "data": [
+    {
+      "resource": "account",
+      "id": "ACCOUNT_ID",
+      "name": "Workspace de exemplo",
+      "primary_color": "aabbcc",
+      "secondary_color": "112233",
+      "notification_sender_type": "Account",
+      "roles": [
+        "owner"
+      ],
+      "is_delete_allowed": true,
+      "created_at": "2026-10-01T12:00:00Z"
+    }
+  ]
 }
 ```
 
-`post()` envia o JSON descrito pela ação; `upload()` envia o multipart descrito acima e retorna o Document completo exemplificado em `get_document`. `envelope()` admite as mesmas requisições, preservando os headers. `binary()` retorna bytes do PDF/ZIP escolhido, sem payload JSON; uma resposta JSON/HTML é rejeitada em vez de ser tratada como arquivo.
+`post()` envia o JSON descrito pela ação; `upload()` envia o multipart descrito acima e retorna o Document exemplificado em `get_document`, sem assignment e has_contract no upload. `envelope()` admite as mesmas requisições, preservando os headers. `binary()` retorna bytes do PDF/ZIP escolhido, sem payload JSON; uma resposta JSON/HTML é rejeitada em vez de ser tratada como arquivo.
+
+GET `/accounts/ACCOUNT_ID` também pode retornar `limits: {"webhook_endpoints": 1}` (ou 3), ausente na lista de contas.
 
 As listas `documents` e `signers` retornam `data: [...]` contendo os modelos completos de `get_document` e `create_signer`. Query comum: `page=1&per-page=50`. Campos usam também `include_standard=1`.
 
@@ -784,49 +878,73 @@ As listas `documents` e `signers` retornam `data: [...]` contendo os modelos com
 Todas as variantes de `loadOptions()` retornam a mesma forma pública:
 
 ```json
-[{ "value": "RESOURCE_ID", "label": "Nome apresentado" }]
+[
+  {
+    "value": "RESOURCE_ID",
+    "label": "Nome apresentado"
+  }
+]
 ```
 
-Template completo do modelo de lista; `default_document_tags` é retornado somente na consulta individual do serviço:
+Template completo do modelo de lista; `default_document_tags` é retornado somente na consulta individual do serviço, como `[{"id":"TAG_ID","name":"Exemplo"}]`:
 
 ```json
 {
   "status": 200,
   "message": "",
-  "data": [{
-    "resource": "template",
-    "id": "TEMPLATE_ID",
-    "name": "Modelo de exemplo",
-    "document_name": "Contrato de exemplo",
-    "message": "Confira antes de assinar.",
-    "status": "ready",
-    "pages": [{
-      "id": "PAGE_ID",
-      "number": 1,
-      "height": 2100,
-      "width": 1275,
-      "download_url": "https://sandbox.assinafy.com.br/v1/templates/TEMPLATE_ID/pages/PAGE_ID/download",
-      "fields": [{
-        "id": "PLACEMENT_ID",
-        "field_id": "FIELD_ID",
-        "role_id": "ROLE_ID",
-        "label": "Assinatura",
-        "display_settings": { "left": 69, "top": 282, "width": 421, "height": 45.86, "fontSize": 22 },
-        "created_at": "2026-10-01T12:00:00Z",
-        "updated_at": "2026-10-01T12:00:00Z"
-      }]
-    }],
-    "roles": [{
-      "id": "ROLE_ID",
-      "name": "Cliente",
-      "assignment_type": "Signer",
+  "data": [
+    {
+      "resource": "template",
+      "id": "TEMPLATE_ID",
+      "name": "Modelo de exemplo",
+      "document_name": "Contrato de exemplo",
+      "message": "Confira antes de assinar.",
+      "status": "ready",
+      "pages": [
+        {
+          "id": "PAGE_ID",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://sandbox.assinafy.com.br/v1/templates/TEMPLATE_ID/pages/PAGE_ID/download",
+          "fields": [
+            {
+              "id": "PLACEMENT_ID",
+              "field_id": "FIELD_ID",
+              "role_id": "ROLE_ID",
+              "label": "Assinatura",
+              "display_settings": {
+                "left": 69,
+                "top": 282,
+                "width": 421,
+                "height": 45.86,
+                "fontSize": 22
+              },
+              "created_at": "2026-10-01T12:00:00Z",
+              "updated_at": "2026-10-01T12:00:00Z"
+            }
+          ]
+        }
+      ],
+      "roles": [
+        {
+          "id": "ROLE_ID",
+          "name": "Cliente",
+          "assignment_type": "Signer",
+          "created_at": "2026-10-01T12:00:00Z",
+          "updated_at": "2026-10-01T12:00:00Z"
+        }
+      ],
+      "tags": [
+        {
+          "id": "TAG_ID",
+          "name": "Exemplo"
+        }
+      ],
       "created_at": "2026-10-01T12:00:00Z",
       "updated_at": "2026-10-01T12:00:00Z"
-    }],
-    "tags": [{ "id": "TAG_ID", "name": "Exemplo" }],
-    "created_at": "2026-10-01T12:00:00Z",
-    "updated_at": "2026-10-01T12:00:00Z"
-  }]
+    }
+  ]
 }
 ```
 
@@ -836,19 +954,21 @@ Field completo:
 {
   "status": 200,
   "message": "",
-  "data": [{
-    "resource": "field",
-    "id": "FIELD_ID",
-    "name": "Assinatura",
-    "type": "signature",
-    "regex": null,
-    "is_pre_defined": true,
-    "is_active": true,
-    "is_required": true,
-    "is_standard": true,
-    "is_read_only": false,
-    "is_visible": true
-  }]
+  "data": [
+    {
+      "resource": "field",
+      "id": "FIELD_ID",
+      "name": "Assinatura",
+      "type": "signature",
+      "regex": null,
+      "is_pre_defined": true,
+      "is_active": true,
+      "is_required": true,
+      "is_standard": true,
+      "is_read_only": false,
+      "is_visible": true
+    }
+  ]
 }
 ```
 
@@ -860,12 +980,14 @@ Field completo:
 {
   "url": "https://receiver.example.com/webhooks/assinafy",
   "email": "ops@example.com",
-  "events": ["document_ready"],
+  "events": [
+    "document_ready"
+  ],
   "is_active": true
 }
 ```
 
-Resposta HTTP completa; o helper mantém os campos retornados pelo serviço, inclusive `updated_at`, embora o tipo Subscription exponha os quatro campos de configuração:
+Resposta HTTP completa; o helper mantém os campos retornados pelo serviço, inclusive `updated_at`, com os campos de configuração e pausa expostos em Subscription:
 
 ```json
 {
@@ -874,9 +996,13 @@ Resposta HTTP completa; o helper mantém os campos retornados pelo serviço, inc
   "data": {
     "url": "https://receiver.example.com/webhooks/assinafy",
     "email": "ops@example.com",
-    "events": ["document_ready"],
+    "events": [
+      "document_ready"
+    ],
     "is_active": true,
-    "updated_at": "2026-10-01T12:00:00Z"
+    "updated_at": "2026-10-01T12:00:00Z",
+    "is_held": false,
+    "held_since": null
   }
 }
 ```
@@ -887,7 +1013,11 @@ Se o serviço retornar `data: null`, `getSubscription()` retorna null. O catálo
 {
   "status": 200,
   "message": "",
-  "data": [{ "id": "document_ready", "description": "Todos os signatários concluíram a assinatura." }]
+  "data": [
+    {
+      "id": "document_ready"
+    }
+  ]
 }
 ```
 

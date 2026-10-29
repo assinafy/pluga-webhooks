@@ -72,7 +72,7 @@ async function discovery(env: Environment, runtime: Runtime) {
 function tokens(value: unknown): OAuthTokens {
   const valid = record(value) && typeof value.access_token === 'string' && value.access_token.length > 0 && !/[\s\x00-\x1f\x7f]/.test(value.access_token) &&
     value.token_type === 'Bearer' && Number.isSafeInteger(value.expires_in) && Number(value.expires_in) > 0 && typeof value.scope === 'string' &&
-    (value.refresh_token === undefined || value.refresh_token === null || typeof value.refresh_token === 'string' && value.refresh_token.length > 0) &&
+    (value.refresh_token === undefined || value.refresh_token === null || typeof value.refresh_token === 'string' && value.refresh_token.length > 0 && !/[\s\x00-\x1f\x7f]/.test(value.refresh_token)) &&
     (value.id_token === undefined || value.id_token === null || typeof value.id_token === 'string' && value.id_token.length > 0);
   if (!valid) throw new IntegrationError('OAUTH_OUTCOME_UNKNOWN', 'The OAuth token response is incomplete; reconnect before repeating the exchange.', { outcomeUnknown: true });
   return value as unknown as OAuthTokens;
@@ -119,8 +119,10 @@ export async function refreshOAuthToken(application: OAuthApplication, refreshTo
   const env = environment(application);
   invariant(typeof refreshToken === 'string' && refreshToken.length > 0, 'INVALID_CREDENTIALS', 'A refresh token is required.');
   const metadata = await discovery(env, runtime);
-  return tokens(await request(String(metadata.token_endpoint), runtime, { grant_type: 'refresh_token', client_id: application.clientId,
+  const rotated = tokens(await request(String(metadata.token_endpoint), runtime, { grant_type: 'refresh_token', client_id: application.clientId,
     refresh_token: refreshToken, ...(application.clientSecret ? { client_secret: application.clientSecret } : {}) }));
+  invariant(rotated.refresh_token, 'OAUTH_OUTCOME_UNKNOWN', 'The rotated refresh token is missing; reconnect instead of reusing the previous token.', { outcomeUnknown: true });
+  return rotated;
 }
 export async function revokeOAuthToken(application: OAuthApplication, token: string, runtime: Runtime = {}): Promise<void> {
   const env = environment(application);

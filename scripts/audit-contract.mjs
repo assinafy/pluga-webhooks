@@ -23,12 +23,19 @@ try {
     assert.deepEqual(structural(operation.requestBody?.content['application/json'].schema ?? { type: 'object', properties: {} }),
       structural(action.input), `Changed input: ${action.name}`);
     assert.deepEqual(structural(operation.responses['200'].content['application/json'].schema), structural(action.output), `Changed output: ${action.name}`);
+    checkMetadata(operation, action);
   }
   for (const pinned of contract.operations) {
     const operation = spec.paths[`/v1${pinned.path}`]?.[pinned.method.toLowerCase()];
     assert.ok(operation, `Missing operation: ${pinned.method} ${pinned.path}`);
     assert.deepEqual(structural(operation.requestBody ?? null), structural(pinned.requestBody), `Changed request: ${pinned.path}`);
     assert.deepEqual(structural(operation.responses['200']), structural(pinned.response), `Changed response: ${pinned.path}`);
+    checkMetadata(operation, pinned);
+  }
+  function checkMetadata(operation, pinned) {
+    const parameters = (operation.parameters ?? []).map(parameter => parameter.$ref ? spec.components.parameters[parameter.$ref.split('/').at(-1)] : parameter);
+    assert.deepEqual(structural(parameters), structural(pinned.parameters), `Changed parameters: ${pinned.path}`);
+    assert.deepEqual(operation.security ?? spec.security ?? [], pinned.security, `Changed authentication: ${pinned.path}`);
   }
   for (const [name, schema] of Object.entries(contract.schemas)) {
     assert.deepEqual(structural(spec.components.schemas[name]), structural(schema), `Changed schema: ${name}`);
@@ -36,6 +43,8 @@ try {
   for (const request of worksheet.requests) {
     assert.ok(spec.paths[`/v1${request.path}`]?.[request.method.toLowerCase()], `Missing request: ${request.id}`);
   }
+  assert.deepEqual(Object.keys(spec.webhooks ?? {}).sort(), [...contract.webhookEvents].sort(), 'Changed webhook event catalog');
+  assert.deepEqual(structural(spec.components.securitySchemes), structural(contract.securitySchemes), 'Changed security schemes');
   for (const [name, path, method] of [
     ['webhookSubscriptionInput', '/v1/accounts/{accountId}/webhooks/subscriptions', 'put'],
     ['webhookEndpointInput', '/v1/accounts/{accountId}/webhooks/endpoints', 'post'],

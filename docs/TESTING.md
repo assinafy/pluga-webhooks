@@ -9,9 +9,9 @@ npm run contract
 npm run test:coverage
 ```
 
-`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos e assinaturas Standard Webhooks.
+`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos, assinaturas Standard Webhooks, rotação OAuth, signatários inline, termos/aditivos CLM, paginação por document_id, conflitos e eventos de contrato.
 
-`contract` lê o OpenAPI público e verifica requests/responses, schemas referenciados, endpoints auxiliares, receitas e autenticação. Também pode receber um arquivo local:
+`contract` lê o OpenAPI público e verifica requests/responses, schemas referenciados, endpoints auxiliares, receitas, parâmetros, catálogo de eventos e autenticação. Também pode receber um arquivo local:
 
 ```sh
 node scripts/audit-contract.mjs /caminho/openapi.json
@@ -44,6 +44,10 @@ A1/A3 exigem assinatura na interface do signatário com certificado ICP-Brasil c
 
 Biometria exige CPF válido, recurso ID Document + Face Match e captura consentida pelo próprio signatário. Teste aprovação direta, falha e revisão: InReview permite assinatura, pending_identity_review bloqueia certificação, aprovação de todas as revisões libera o arquivo e rejeição cancela o documento. Consulte o catálogo do ambiente antes de registrar eventos de identidade; sandbox e produção podem disponibilizar recursos em momentos diferentes. Não use dados biométricos ou destinatários reais sem autorização.
 
+## Aceitação CLM
+
+Use somente documentos e contratos de teste. Cadastre termos, consulte a lista/família, altere com updated_at e confirme 409 com uma versão antiga. Vincule um aditivo e confirme que o pai só muda após certificated. Teste renovação com term atual, recusa do term antigo e encerramento. Leia os eventos document_contract_* e confirme recuperação por updated_at. Produção e sandbox podem disponibilizar CLM em momentos diferentes.
+
 ## Aceitação OAuth
 
 Registre uma aplicação de teste com callback HTTPS. Um Cloudflare Quick Tunnel pode expor apenas o handler de callback em loopback durante o teste. Não exponha arquivos locais, tokens ou um servidor genérico de diretório.
@@ -58,6 +62,6 @@ As execuções de produção de 2026-10-04 estão registradas em [live-acceptanc
 
 ## CI e release
 
-GitHub Actions executa os checks em Node.js 22 e 24, valida documentação e o contrato público da API. Nenhum segredo de workspace é necessário no CI. Uma indisponibilidade do OpenAPI impede o check de contrato e deve ser resolvida antes do release.
+GitHub Actions executa os checks em Node.js 22, 24 e 26, valida documentação e o contrato público da API. Nenhum segredo de workspace é necessário no CI. Uma indisponibilidade do OpenAPI impede o check de contrato e deve ser resolvida antes do release.
 
 Atualize package.json/package-lock.json com uma versão minor, execute os checks e crie a tag `vVERSÃO` no commit aprovado. Faça push do commit e da tag, confira o SHA do workflow e aguarde todas as execuções terminarem. Não publique credentials, artefatos locais, AGENTS.md ou CLAUDE.md.

@@ -54,3 +54,22 @@ test('setup request is distinguished from routine automations and credentials ne
     assert.equal(JSON.stringify(recipe.body ?? {}).includes('API_KEY'), false);
   }
 });
+
+test('CLM recipes and documented bodies match every supported request field and response model', async () => {
+  const reference = await readFile(new URL('../docs/CONTRACTS.md', import.meta.url), 'utf8');
+  const bodies = [...reference.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1]));
+  for (const row of worksheet.requests.filter(row => row.path.includes('/contract') && row.body)) {
+    const operation = contract.operations.find(operation => operation.path === row.path && operation.method === row.method);
+    validate(row.body, operation.requestBody.content['application/json'].schema, contract.schemas);
+    assert.ok(bodies.some(body => JSON.stringify(body) === JSON.stringify(row.body)), row.id);
+    const name = row.id === 'link_contract_amendment' ? 'DocumentContractAmendment' : 'DocumentContract';
+    for (const key of Object.keys(contract.schemas[name].properties).filter(key => key !== 'document')) {
+      assert.ok(Object.hasOwn(row.response_model.data, key), `${row.id}: ${key}`);
+    }
+  }
+  const update = worksheet.requests.find(row => row.id === 'update_contract').body;
+  const link = worksheet.requests.find(row => row.id === 'link_contract_amendment').body;
+  assert.deepEqual(Object.keys({ ...update, ...link }).sort(), Object.keys(contract.schemas.DocumentContractInput.properties).sort());
+  assert.equal(worksheet.requests.find(row => row.id === 'list_contracts').unique_key, 'document_id');
+  assert.equal(worksheet.requests.find(row => row.id === 'rotate_webhook_secret').api_key_only, undefined);
+});

@@ -124,7 +124,8 @@
         "data": {
           "id": "document_example",
           "account_id": "workspace_example",
-          "status": "pending_signature"
+          "status": "uploaded",
+          "assignment": null
         }
       }
     },
@@ -158,7 +159,8 @@
         "data": {
           "id": "document_example",
           "account_id": "workspace_example",
-          "status": "pending_signature"
+          "status": "uploaded",
+          "assignment": null
         }
       }
     },
@@ -254,7 +256,32 @@
         "per-page": 50
       },
       "response_data_key": "data",
-      "unique_key": "id"
+      "unique_key": "id",
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": [
+          {
+            "resource": "activity_dispatching_history",
+            "id": "10001",
+            "event": "document_ready",
+            "activity_id": 10001,
+            "endpoint_id": "ENDPOINT_ID",
+            "endpoint": "https://receiver.example.com/hook",
+            "payload": null,
+            "delivered": false,
+            "webhook_id": "MESSAGE_ID",
+            "attempt": 1,
+            "kind": "scheduled",
+            "will_retry": true,
+            "http_status": 503,
+            "response_body": null,
+            "error": null,
+            "created_at": "2026-10-28T12:00:00Z",
+            "updated_at": "2026-10-28T12:00:00Z"
+          }
+        ]
+      }
     },
     {
       "id": "list_webhook_endpoints",
@@ -311,7 +338,437 @@
       "method": "POST",
       "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate",
       "setup_only": true,
-      "api_key_only": true
+      "oauth_scope": "webhooks:write"
+    },
+    {
+      "id": "create_document_from_template_inline",
+      "name": "Criar e enviar por modelo com contato inline",
+      "method": "POST",
+      "path": "/accounts/{accountId}/templates/{templateId}/documents",
+      "body": {
+        "name": "Teste Pluga",
+        "signers": [
+          {
+            "role_id": "role_example",
+            "verification_method": "Email",
+            "notification_methods": [
+              "Email"
+            ],
+            "email": "signer@example.com",
+            "name": "Signatário de exemplo",
+            "whatsapp_phone_number": "+5548999990000"
+          }
+        ],
+        "editor_fields": [
+          {
+            "field_id": "field_example",
+            "value": "Valor de teste"
+          }
+        ]
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "id": "document_example",
+          "account_id": "workspace_example",
+          "status": "uploaded",
+          "assignment": null
+        }
+      }
+    },
+    {
+      "id": "list_contracts",
+      "name": "Consultar contratos",
+      "method": "GET",
+      "path": "/accounts/{accountId}/contracts",
+      "query": {
+        "status": "active,expired",
+        "counterparty": "Empresa de exemplo",
+        "search": "Contrato",
+        "end_date_from": "2026-11-01",
+        "end_date_to": "2027-10-31",
+        "ending_within_days": 30,
+        "external_system": "crm",
+        "external_id": "DEAL_ID",
+        "sort": "-updated_at",
+        "expand": "document",
+        "page": 1,
+        "per-page": 50
+      },
+      "response_data_key": "data",
+      "unique_key": "document_id",
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": [
+          {
+            "document_id": "DOCUMENT_ID",
+            "status": "active",
+            "counterparty_name": "Empresa de exemplo",
+            "counterparty_taxpayer_id": "11222333000181",
+            "value": 120000.5,
+            "currency": "BRL",
+            "start_date": "2026-11-01",
+            "end_date": "2027-10-31",
+            "auto_renew": true,
+            "renewal_term_months": 12,
+            "notice_period_days": 30,
+            "term": 1,
+            "owner_id": "OWNER_ID",
+            "metadata": {
+              "crm_stage": "won"
+            },
+            "external_references": [
+              {
+                "system": "crm",
+                "id": "DEAL_ID"
+              }
+            ],
+            "amendments": [],
+            "created_at": "2026-10-28T12:00:00Z",
+            "updated_at": "2026-10-28T12:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "get_contract",
+      "name": "Consultar termos do contrato",
+      "method": "GET",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract",
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract",
+          "document_id": "DOCUMENT_ID",
+          "status": "active",
+          "counterparty_name": "Empresa de exemplo",
+          "counterparty_taxpayer_id": "11222333000181",
+          "value": 120000.5,
+          "currency": "BRL",
+          "start_date": "2026-11-01",
+          "end_date": "2027-10-31",
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 30,
+          "term": 1,
+          "owner_id": "OWNER_ID",
+          "metadata": {
+            "crm_stage": "won"
+          },
+          "external_references": [
+            {
+              "system": "crm",
+              "id": "DEAL_ID"
+            }
+          ],
+          "amendments": [],
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "update_contract",
+      "name": "Cadastrar ou alterar termos",
+      "method": "PUT",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract",
+      "body": {
+        "status": "active",
+        "counterparty_name": "Empresa de exemplo",
+        "counterparty_taxpayer_id": "11.222.333/0001-81",
+        "value": 120000.5,
+        "currency": "BRL",
+        "start_date": "2026-11-01",
+        "end_date": "2027-10-31",
+        "auto_renew": true,
+        "renewal_term_months": 12,
+        "notice_period_days": 30,
+        "owner_id": "OWNER_ID",
+        "metadata": {
+          "crm_stage": "won"
+        },
+        "external_references": [
+          {
+            "system": "crm",
+            "id": "DEAL_ID"
+          }
+        ],
+        "updated_at": "2026-10-28T12:00:00Z"
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract",
+          "document_id": "DOCUMENT_ID",
+          "status": "active",
+          "counterparty_name": "Empresa de exemplo",
+          "counterparty_taxpayer_id": "11222333000181",
+          "value": 120000.5,
+          "currency": "BRL",
+          "start_date": "2026-11-01",
+          "end_date": "2027-10-31",
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 30,
+          "term": 1,
+          "owner_id": "OWNER_ID",
+          "metadata": {
+            "crm_stage": "won"
+          },
+          "external_references": [
+            {
+              "system": "crm",
+              "id": "DEAL_ID"
+            }
+          ],
+          "amendments": [],
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      },
+      "instructions": "No primeiro cadastro, omita updated_at. Em alterações, copie updated_at da última consulta do contrato."
+    },
+    {
+      "id": "get_contract_family",
+      "name": "Consultar contrato e aditivos",
+      "method": "GET",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract/related",
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract",
+          "document_id": "DOCUMENT_ID",
+          "status": "active",
+          "counterparty_name": "Empresa de exemplo",
+          "counterparty_taxpayer_id": "11222333000181",
+          "value": 120000.5,
+          "currency": "BRL",
+          "start_date": "2026-11-01",
+          "end_date": "2027-10-31",
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 30,
+          "term": 1,
+          "owner_id": "OWNER_ID",
+          "metadata": {
+            "crm_stage": "won"
+          },
+          "external_references": [
+            {
+              "system": "crm",
+              "id": "DEAL_ID"
+            }
+          ],
+          "amendments": [
+            {
+              "resource": "document_contract_amendment",
+              "document_id": "AMENDMENT_DOCUMENT_ID",
+              "document_name": "Aditivo de exemplo.pdf",
+              "parent_document_id": "DOCUMENT_ID",
+              "relation_type": "amendment",
+              "number": null,
+              "status": "pending",
+              "document_status": "pending_signature",
+              "apply_error": null,
+              "currency": "BRL",
+              "terms": {
+                "value": 130000,
+                "end_date": "2028-06-30"
+              },
+              "changes": {
+                "value": {
+                  "from": 120000.5,
+                  "to": 130000
+                },
+                "end_date": {
+                  "from": "2027-10-31",
+                  "to": "2028-06-30"
+                },
+                "term": {
+                  "from": 1,
+                  "to": 2
+                }
+              },
+              "applied_at": null,
+              "created_at": "2026-10-28T12:00:00Z",
+              "updated_at": "2026-10-28T12:00:00Z"
+            }
+          ],
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "link_contract_amendment",
+      "name": "Vincular documento de aditivo",
+      "method": "PUT",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract",
+      "body": {
+        "parent_document_id": "DOCUMENT_ID",
+        "relation_type": "amendment",
+        "value": 130000,
+        "end_date": "2028-06-30"
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract_amendment",
+          "document_id": "AMENDMENT_DOCUMENT_ID",
+          "document_name": "Aditivo de exemplo.pdf",
+          "parent_document_id": "DOCUMENT_ID",
+          "relation_type": "amendment",
+          "number": null,
+          "status": "pending",
+          "document_status": "pending_signature",
+          "apply_error": null,
+          "currency": "BRL",
+          "terms": {
+            "value": 130000,
+            "end_date": "2028-06-30"
+          },
+          "changes": {
+            "value": {
+              "from": 120000.5,
+              "to": 130000
+            },
+            "end_date": {
+              "from": "2027-10-31",
+              "to": "2028-06-30"
+            },
+            "term": {
+              "from": 1,
+              "to": 2
+            }
+          },
+          "applied_at": null,
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "renew_contract",
+      "name": "Renovar contrato",
+      "method": "POST",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract/renew",
+      "body": {
+        "term": 1,
+        "end_date": "2028-10-31",
+        "value": 130000,
+        "updated_at": "2026-10-28T12:00:00Z"
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract",
+          "document_id": "DOCUMENT_ID",
+          "status": "active",
+          "counterparty_name": "Empresa de exemplo",
+          "counterparty_taxpayer_id": "11222333000181",
+          "value": 130000,
+          "currency": "BRL",
+          "start_date": "2026-11-01",
+          "end_date": "2028-10-31",
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 30,
+          "term": 2,
+          "owner_id": "OWNER_ID",
+          "metadata": {
+            "crm_stage": "won"
+          },
+          "external_references": [
+            {
+              "system": "crm",
+              "id": "DEAL_ID"
+            }
+          ],
+          "amendments": [],
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "terminate_contract",
+      "name": "Encerrar contrato",
+      "method": "POST",
+      "path": "/accounts/{accountId}/documents/{documentId}/contract/terminate",
+      "body": {
+        "reason": "Contrato encerrado conforme acordo.",
+        "updated_at": "2026-10-28T12:00:00Z"
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "document_contract",
+          "document_id": "DOCUMENT_ID",
+          "status": "terminated",
+          "counterparty_name": "Empresa de exemplo",
+          "counterparty_taxpayer_id": "11222333000181",
+          "value": 120000.5,
+          "currency": "BRL",
+          "start_date": "2026-11-01",
+          "end_date": "2027-10-31",
+          "auto_renew": true,
+          "renewal_term_months": 12,
+          "notice_period_days": 30,
+          "term": 1,
+          "owner_id": "OWNER_ID",
+          "metadata": {
+            "crm_stage": "won"
+          },
+          "external_references": [
+            {
+              "system": "crm",
+              "id": "DEAL_ID"
+            }
+          ],
+          "amendments": [],
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "retry_webhook_delivery",
+      "name": "Reenviar entrega de webhook",
+      "method": "POST",
+      "path": "/accounts/{accountId}/webhooks/{historyId}/retry",
+      "setup_only": true,
+      "oauth_scope": "webhooks:write",
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "resource": "activity_dispatching_history",
+          "id": "10001",
+          "event": "document_ready",
+          "activity_id": 10001,
+          "endpoint_id": "ENDPOINT_ID",
+          "endpoint": "https://receiver.example.com/hook",
+          "payload": null,
+          "delivered": true,
+          "webhook_id": "MESSAGE_ID",
+          "attempt": null,
+          "kind": "manual",
+          "will_retry": false,
+          "http_status": 200,
+          "response_body": null,
+          "error": null,
+          "created_at": "2026-10-28T12:00:00Z",
+          "updated_at": "2026-10-28T12:00:00Z"
+        }
+      }
     }
   ],
   "environments": {

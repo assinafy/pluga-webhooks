@@ -55,7 +55,7 @@ for (const [label, body, code] of [
 });
 test('template cannot send to a signer outside this workspace', async () => {
   const m = mock([workspaceStep(), { response: ok([template]) }, { response: ok([]) }]);
-  await assert.rejects(runAction('create_document_from_template', client(m), { template_id: 'template1', body: { signers: [{ id: 'other', role_id: 'customer' }] } }), hasCode('SIGNER_NOT_FOUND')); m.done();
+  await assert.rejects(runAction('create_document_from_template', client(m), { template_id: 'template1', body: { signers: [{ id: 'other', role_id: 'customer' }], editor_fields: [{ field_id: 'price', value: '20' }] } }), hasCode('SIGNER_NOT_FOUND')); m.done();
 });
 test('virtual request supports ordered signing, message, expiration and copy receivers', async () => {
   const body = { method: 'virtual', signers: [{ id: 'signer1', step: 1 }], copy_receivers: ['copy1'], message: 'Test', expires_at: new Date(NOW + 7200000).toISOString() };

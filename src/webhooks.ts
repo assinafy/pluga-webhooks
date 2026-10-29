@@ -13,6 +13,8 @@ export interface Subscription {
   email: string | null;
   events: string[];
   is_active: boolean;
+  is_held?: boolean;
+  held_since?: number | null;
 }
 function validateWebhookUrl(value: unknown): void {
   let url: URL;
@@ -63,14 +65,7 @@ export async function registerSubscription(client: AssinafyClient, input: Subscr
   return result.data;
 }
 
-const documentEvents = new Set([
-  'document_uploaded', 'document_metadata_ready', 'document_prepared', 'assignment_created',
-  'document_ready', 'signature_requested', 'signer_viewed_document', 'signer_signed_document',
-  'signer_rejected_document', 'user_rejected_document', 'document_processing_failed',
-  'signer_email_verified', 'signer_whatsapp_verified', 'signer_data_confirmed',
-  'signer_identity_verified', 'signer_identity_verification_failed', 'signer_identity_review_required',
-  'signer_identity_review_approved', 'signer_identity_review_rejected',
-]);
+const documentEvents = new Set<string>(contract.documentEvents);
 
 /** Shapes the current Assinafy activity envelope. This does not authenticate a webhook or store deduplication state. */
 export function normalizeEvent(input: unknown, accountId: string, webhookId?: string) {
@@ -103,7 +98,7 @@ export interface WebhookEndpoint extends Subscription {
   signing_enabled: boolean;
   created_at: string;
   updated_at: string;
-  /** Returned only when creating an endpoint with signing enabled; store securely. */
+  /** Returned once when creating or enabling signed delivery; store securely. */
   secret?: string;
 }
 export interface WebhookEndpointInput {

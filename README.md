@@ -1,12 +1,12 @@
 # Assinafy + Pluga
 
-Integre o ciclo de documentos da Assinafy com **Pluga Webhooks + HTTP Request**. O kit inclui receitas JSON, cliente TypeScript sem dependências de execução, API key, OAuth2 com PKCE, configuração de endpoints e verificação de webhooks assinados.
+Integre o ciclo de documentos da Assinafy com **Pluga Webhooks + HTTP Request**. O kit inclui receitas JSON, cliente TypeScript sem dependências de execução, API key, OAuth2 com PKCE, gestão de contratos (CLM), configuração de endpoints e verificação de webhooks assinados.
 
 As receitas são instruções para configurar requisições manualmente. O código TypeScript executa no seu servidor ou processo Node.js; colar uma receita não instala esse código dentro da Pluga. Um conector nativo e a listagem no programa de parceiros dependem da aprovação da Pluga.
 
 ## Instalação e ambientes
 
-Use **Node.js 24 LTS**. Node.js 22 LTS também é suportado. TypeScript 7 é uma dependência de desenvolvimento; TypeScript não possui uma política de LTS equivalente à do Node.js.
+Use **Node.js 26 LTS**. Node.js 22 e 24 LTS também são suportados. TypeScript 7 é uma dependência de desenvolvimento; TypeScript não possui uma política de LTS equivalente à do Node.js.
 
 ```sh
 npm ci
@@ -95,7 +95,7 @@ const signer = await runAction('create_signer', client, {
 
 ### 3. Prepare o documento
 
-**Modelo existente:** consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo `ready` e mapeie cada papel não-editor exatamente uma vez. Preencha campos do editor pelos IDs do próprio modelo.
+**Modelo existente:** consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo `ready` e mapeie cada papel Signer exatamente uma vez. Papéis CopyReceiver são opcionais. Preencha todos os campos do editor pelos IDs do próprio modelo, com valores não vazios.
 
 ```js
 const roles = await loadOptions('template_roles', client, templateId);
@@ -108,7 +108,7 @@ const sent = await runAction('create_document_from_template', client, {
 });
 ```
 
-**Essa chamada cria e envia o documento para assinatura.** O exemplo pressupõe um modelo com um único papel e nenhum campo do editor obrigatório. Mapeie todos os papéis e acrescente `editor_fields` quando necessário.
+**Essa chamada cria o documento e inicia o envio em segundo plano.** A resposta inicial tem `status: uploaded` e `assignment: null`; acompanhe até `pending_signature`/`assignment_created` ou `failed`/`document_processing_failed`. O exemplo pressupõe um único papel Signer e nenhum campo Editor. Também é possível enviar `email`, `name` e `whatsapp_phone_number` em vez de `id`: a API reutiliza o contato pelo e-mail ou cria um novo. Se ambos forem enviados, `id` prevalece. Certificado e biometria exigem contato existente com CPF/CNPJ apropriado.
 
 **PDF existente:** no cliente local, envie bytes por multipart. O transporte define o boundary; não informe `Content-Type` manualmente.
 
@@ -173,7 +173,7 @@ Crie **Webhooks → Notificação recebida** na Pluga e copie a URL privada. Con
 
 Há um endpoint no plano gratuito e até três nos planos pagos. Cada um possui URL, eventos e assinatura próprios. Use uma URL distinta para cada integração. `/webhooks/subscriptions` continua funcionando e atua no endpoint mais antigo; os helpers legados preservam uma configuração existente diferente.
 
-Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Ao criar o endpoint com `signing_enabled: true`, guarde imediatamente o `secret` retornado por `registerWebhookEndpoint`; ele não aparece em listas ou consultas posteriores. Com API key, também é possível consultar `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`. Essa consulta e a rotação não aceitam OAuth: se o segredo de um endpoint OAuth for perdido, exclua explicitamente esse endpoint e crie outro. Guarde o segredo somente no receptor.
+Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Ao criar o endpoint com `signing_enabled: true`, guarde imediatamente o `secret` retornado por `registerWebhookEndpoint`; ele não aparece em listas ou consultas posteriores. Com API key, também é possível consultar `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`. Essa consulta exige API key. OAuth com `webhooks:write` pode rotacionar por POST `.../secret/rotate`; o segredo antigo deixa de funcionar imediatamente. PUT que habilita assinatura também retorna o novo `secret` uma vez. Guarde o segredo somente no receptor.
 
 ```js
 import { verifyWebhookSignature, normalizeEvent } from './dist/index.js';
@@ -187,7 +187,7 @@ O helper verifica HMAC-SHA256 usando Web Crypto, aceita entradas `v1` do padrão
 
 Se a modalidade Pluga não permitir verificar corpo/headers, use seu receptor para verificar antes de encaminhar os campos necessários à Pluga. Habilitar assinatura no envio não implementa a verificação no destino. Mantenha a URL privada e confirme o documento por GET autenticado.
 
-O ID superior `id` identifica a atividade; `object.id` identifica o documento. O [exemplo fictício](examples/document-ready.json) mostra o envelope. `document_ready` indica que todos assinaram; `signer_signed_document` indica uma assinatura individual. Eventos podem se repetir e chegar fora de ordem. Cada endpoint recebe independentemente, com até duas tentativas e intervalo de três segundos. Consulte entregas em `GET /accounts/ACCOUNT_ID/webhooks`.
+O ID superior `id` identifica a atividade; `object.id` identifica o documento. O [exemplo fictício](examples/document-ready.json) mostra o envelope. `document_ready` é emitido após a certificação, incluindo a aprovação de revisões de identidade; `signer_signed_document` indica uma assinatura individual. Eventos podem se repetir e chegar fora de ordem. Cada endpoint recebe independentemente, com até seis tentativas, cerca de dez minutos entre elas. Erros de conexão, timeout, 408, 429 e 5xx permitem nova tentativa; outros status são finais. Após dez falhas consecutivas, `is_held` indica pausa: sondagens ocorrem após 3, 15 e 60 minutos, depois a cada seis horas. Uma sondagem bem-sucedida libera a fila. Alterar a URL ou enviar `is_active: true` também libera a pausa. Consulte entregas em `GET /accounts/ACCOUNT_ID/webhooks`.
 
 ### 6. Confirme o estado e obtenha o arquivo
 
@@ -220,6 +220,31 @@ Associe documento e registro de origem por ID. Atualize a linha, negócio ou car
 
 O cliente não repete requisições automaticamente. `IntegrationError` informa `code`, `httpStatus`, `safeToRetry`, `outcomeUnknown` e `retryAfterSeconds`, sem expor corpos upstream. Resultado desconhecido de escrita exige reconciliação.
 
+## Gestão de contratos após criar o documento
+
+Use os termos CLM para associar o documento ao CRM e acompanhar vigência e renovação:
+
+```js
+import { updateContract, getContract, listContracts } from './dist/index.js';
+
+await updateContract(client, documentId, {
+  status: 'active',
+  start_date: '2026-11-01',
+  end_date: '2027-10-31',
+  value: 1200,
+  currency: 'BRL',
+  auto_renew: true,
+  renewal_term_months: 12,
+  notice_period_days: 30,
+  external_references: [{ system: 'crm', id: 'DEAL_ID' }],
+});
+const terms = await getContract(client, documentId);
+await updateContract(client, documentId, { value: 1500, updated_at: terms.updated_at });
+const ending = await listContracts(client, { status: 'active', ending_within_days: 30 });
+```
+
+O cadastro de termos não envia assinatura. Para aditivos, crie outro documento, vincule-o pelo `parent_document_id` e assine-o; a alteração é aplicada ao pai quando o instrumento está `certificated`. `getContractFamily` consulta a família, `renewContract` renova por term/data e `terminateContract` encerra diretamente. Inscreva os eventos `document_contract_*`, verifique a assinatura e consulte os termos pelo `object.id` antes de atualizar o destino. Use `updated_at` como precondição e reconcilie 409; consultas periódicas ordenadas por `-updated_at` recuperam eventos perdidos. Contratos usam `document_id`, sem `id`. Veja [requests, responses e regras completas de CLM](docs/CONTRACTS.md).
+
 ## OAuth2 para contas de clientes
 
 Registre a aplicação em **Integrações → Apps OAuth**. Use confidential no servidor que guarda segredo ou public em dispositivo/browser. Cadastre a URI HTTPS exata. O fluxo OAuth 2.1 authorization code exige PKCE:
@@ -248,6 +273,7 @@ Access tokens duram uma hora. Para receber refresh token, registre e solicite `o
 | Documentos, contatos, campos, catálogo/histórico de eventos | `documents:read` |
 | Criar documento/signatário e solicitar assinatura | `documents:write` e leitura para os preflights |
 | Modelos e papéis | `templates:read` |
+| Consultar/gravar contratos CLM | `documents:read` / `documents:write`, com leitura de workspace |
 | Criar/alterar/excluir endpoints | `webhooks:write` e leitura usada no setup |
 | Renovação em segundo plano | `offline_access` durante consentimento |
 
@@ -256,6 +282,7 @@ Seu servidor mantém sessões, armazenamento de tokens e exclusão mútua no ref
 ## Referência e operação
 
 - [Todas as funções e payloads](docs/API.md)
+- [Gestão de contratos, aditivos e renovação](docs/CONTRACTS.md)
 - [Configuração manual na Pluga](docs/SETUP.md)
 - [Execução dos testes](docs/TESTING.md)
 - [Guia público](public-guide/README.md)

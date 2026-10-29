@@ -16,7 +16,7 @@ for (const flow of ['template', 'virtual', 'collect']) for (const verification o
     test(`${flow}: ${verification} with ${notification ?? 'inferred'} notification ${allowed ? 'sends' : 'is rejected'}`, async () => {
       const row = { id: signer.id, verification_method: verification,
         ...(notification ? { notification_methods: [notification] } : {}), ...(flow === 'template' ? { role_id: 'customer' } : {}) };
-      const body = { signers: [row], ...(flow === 'template' ? {} : { method: flow }), ...(flow === 'collect' ? { entries } : {}) };
+      const body = { signers: [row], ...(flow === 'template' ? { editor_fields: [{ field_id: 'price', value: '20' }] } : { method: flow }), ...(flow === 'collect' ? { entries } : {}) };
       const reads = flow === 'template' ? [workspaceStep(), { response: ok([template]) }] : allowed ? [workspaceStep(), { response: ok(document) }] : [];
       const signers = [{ ...row, ...(verification === 'IdDocumentFaceMatchBasic' ? { identity_verification_status: 'InReview' } : {}) }];
       const result = { id: 'created1', ...(flow === 'template' ? { assignment: { signers } } : { signers }), future_data: { preserved: true } };
@@ -44,7 +44,7 @@ for (const flow of ['template', 'virtual']) for (const government_id of [undefin
   test(`${flow}: biometric signing requires a normalized CPF: ${government_id}`, async () => {
     const m = mock([workspaceStep(), { response: ok(flow === 'template' ? [template] : document) }, { response: ok([{ ...contact, government_id }]) }]);
     const body = { signers: [{ id: signer.id, verification_method: 'IdDocumentFaceMatchBasic', ...(flow === 'template' ? { role_id: 'customer' } : {}) }],
-      ...(flow === 'template' ? {} : { method: 'virtual' }) };
+      ...(flow === 'template' ? { editor_fields: [{ field_id: 'price', value: '20' }] } : { method: 'virtual' }) };
     await assert.rejects(runAction(flow === 'template' ? 'create_document_from_template' : 'request_signatures', new AssinafyClient(credentials, m.runtime),
       { ...(flow === 'template' ? { template_id: template.id } : { document_id: document.id }), body }), hasCode('INVALID_GOVERNMENT_ID'));
     m.done();
@@ -54,7 +54,7 @@ for (const flow of ['template', 'virtual']) for (const government_id of [undefin
 for (const notification of ['Email', 'Whatsapp']) for (const flow of ['template', 'virtual']) {
   test(`${flow}: notification alone infers ${notification} verification and uses only that contact`, async () => {
     const row = { id: signer.id, notification_methods: [notification], ...(flow === 'template' ? { role_id: 'customer' } : {}) };
-    const body = { signers: [row], ...(flow === 'template' ? {} : { method: 'virtual' }) };
+    const body = { signers: [row], ...(flow === 'template' ? { editor_fields: [{ field_id: 'price', value: '20' }] } : { method: 'virtual' }) };
     const selected = { ...contact, ...(notification === 'Whatsapp' ? { email: null } : { whatsapp_phone_number: null }), government_id: null };
     const m = mock([workspaceStep(), { response: ok(flow === 'template' ? [template] : document) }, { response: ok([selected]) }, { response: ok({ id: 'created1' }) }]);
     await runAction(flow === 'template' ? 'create_document_from_template' : 'request_signatures', new AssinafyClient(credentials, m.runtime),
@@ -84,3 +84,55 @@ for (const event of ['signer_identity_verified', 'signer_identity_verification_f
     assert.throws(() => normalizeEvent({ ...input, object: { type: 'Signer', id: signer.id } }, 'workspace1'), hasCode('INVALID_EVENT'));
   });
 }
+
+for (const verification of methods) for (const channel of ['Email', 'Whatsapp']) {
+  if (!['DigitalCertificate', 'IdDocumentFaceMatchBasic', channel].includes(verification)) continue;
+  test(`inline template lookup supports ${verification}/${channel} without discarding fields`, async () => {
+    const body = { signers: [{ role_id: 'customer', email: contact.email, name: 'Example signer', whatsapp_phone_number: contact.whatsapp_phone_number,
+      verification_method: verification, notification_methods: [channel] }] };
+    const selected = { ...template, pages: [] };
+    for (const existing of [true, false]) {
+      const allowed = existing || ['Email', 'Whatsapp'].includes(verification);
+      const m = mock([workspaceStep(), { response: ok([selected]) }, { response: ok(existing ? [contact] : []) },
+        ...(allowed ? [{ response: ok({ ...readyDocument, status: 'uploaded', assignment: null }), check(_, init) { assert.deepEqual(JSON.parse(init.body), body); } }] : [])]);
+      const call = runAction('create_document_from_template', new AssinafyClient(credentials, m.runtime), { template_id: template.id, body });
+      if (allowed) assert.equal((await call).status, 'uploaded');
+      else await assert.rejects(call, hasCode('INVALID_GOVERNMENT_ID'));
+      m.done();
+    }
+  });
+}
+
+test('template IDs take precedence over inline fields and copy roles are optional', async () => {
+  const selected = { ...template, pages: [], roles: [...template.roles, { id: 'copy', assignment_type: 'CopyReceiver' }] };
+  const body = { signers: [{ id: signer.id, role_id: 'customer', email: 'ignored', name: '' }] };
+  const m = mock([workspaceStep(), { response: ok([selected]) }, { response: ok([contact]) }, { response: ok({ id: 'created1' }) }]);
+  await runAction('create_document_from_template', new AssinafyClient(credentials, m.runtime), { template_id: template.id, body }); m.done();
+});
+
+for (const row of [{}, { email: 'invalid', name: 'Example' }, { email: 'new@example.com' },
+  { email: 'new@example.com', name: 'Example', whatsapp_phone_number: 'invalid' }]) {
+  test(`invalid inline contact cannot send: ${JSON.stringify(row)}`, async () => {
+    const m = mock([workspaceStep(), { response: ok([{ ...template, pages: [] }]) }, { response: ok([]) }]);
+    await assert.rejects(runAction('create_document_from_template', new AssinafyClient(credentials, m.runtime),
+      { template_id: template.id, body: { signers: [{ ...row, role_id: 'customer' }] } })); m.done();
+  });
+}
+
+for (const editor_fields of [undefined, [], [{ field_id: 'price', value: '' }]]) {
+  test('every editor placement requires a supplied non-empty value', async () => {
+    const m = mock([workspaceStep(), { response: ok([template]) }]);
+    await assert.rejects(runAction('create_document_from_template', new AssinafyClient(credentials, m.runtime),
+      { template_id: template.id, body: { signers: [{ id: signer.id, role_id: 'customer' }], ...(editor_fields ? { editor_fields } : {}) } }), hasCode('INVALID_EDITOR_FIELDS')); m.done();
+  });
+}
+
+test('collect refuses a signer without a field and a template signing role without a placement', async () => {
+  const m = mock([workspaceStep(), { response: ok(document) }]);
+  await assert.rejects(runAction('request_signatures', new AssinafyClient(credentials, m.runtime),
+    { document_id: document.id, body: { method: 'collect', signers: [{ id: signer.id }, { id: 'signer2' }], entries } }), hasCode('INVALID_ENTRIES')); m.done();
+  const selected = { ...template, roles: [...template.roles, { id: 'second', assignment_type: 'Signer' }] };
+  const t = mock([workspaceStep(), { response: ok([selected]) }]);
+  await assert.rejects(runAction('create_document_from_template', new AssinafyClient(credentials, t.runtime),
+    { template_id: template.id, body: { signers: [{ id: signer.id, role_id: 'customer' }, { id: 'signer2', role_id: 'second' }] } }), hasCode('INVALID_ENTRIES')); t.done();
+});

@@ -30,7 +30,7 @@ function objectRows(value: unknown): Record<string, unknown>[] {
 function validateSigning(rows: Record<string, unknown>[]): void {
   invariant(rows.length > 0, 'INVALID_SIGNERS', 'Add at least one signer.');
   for (const row of rows) {
-    id(row.id, 'Signer ID');
+    if (row.id !== undefined) id(row.id, 'Signer ID');
     const notifications = row.notification_methods;
     if (notifications !== undefined) invariant(Array.isArray(notifications) && notifications.length === 1 &&
       ['Email', 'Whatsapp'].includes(String(notifications[0])), 'INVALID_NOTIFICATION', 'Choose exactly one notification channel.');
@@ -56,11 +56,25 @@ function validateDigitalCertificateMethod(rows: Record<string, unknown>[], metho
     'DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL', 'Digital certificate signers require a virtual assignment without placed fields.');
 }
 async function verifyContacts(client: AssinafyClient, rows: Record<string, unknown>[], signingRows: Record<string, unknown>[], copies: string[]): Promise<void> {
-  const requested = [...rows.map(row => id(row.id, 'Signer ID')), ...copies.map(value => id(value, 'Copy receiver ID'))];
+  const requested = [...rows.filter(row => row.id !== undefined).map(row => id(row.id, 'Signer ID')), ...copies.map(value => id(value, 'Copy receiver ID'))];
   const existing = new Map((await client.list<Resource>(await client.accountPath('/signers'))).map(row => [row.id, row]));
+  const byEmail = new Map<string, Resource>();
+  for (const contact of existing.values()) if (typeof contact.email === 'string') byEmail.set(contact.email.toLowerCase(), contact);
   invariant(requested.every(value => existing.has(value)), 'SIGNER_NOT_FOUND', 'Every signer and copy receiver must exist in the connected workspace.');
+  const contacts = new Map<Record<string, unknown>, Record<string, unknown>>();
+  for (const row of rows) {
+    if (row.id !== undefined) { contacts.set(row, existing.get(String(row.id))!); continue; }
+    invariant(typeof row.email === 'string' && EMAIL_PATTERN.test(row.email), 'INVALID_CONTACT', 'Provide an existing signer ID or a valid email.');
+    const found = byEmail.get(row.email.toLowerCase());
+    if (!found) {
+      invariant(typeof row.name === 'string' && row.name.trim(), 'INVALID_CONTACT', 'A new inline signer needs a name.');
+      if (row.whatsapp_phone_number !== undefined) invariant(typeof row.whatsapp_phone_number === 'string' && E164_PATTERN.test(row.whatsapp_phone_number),
+        'INVALID_PHONE', 'Use an E.164 WhatsApp number, including + and country code.');
+    }
+    contacts.set(row, found ?? row);
+  }
   for (const row of signingRows) {
-    const contact = existing.get(String(row.id))!;
+    const contact = contacts.get(row)!;
     const notifications = row.notification_methods as string[] | undefined;
     const channel = notifications?.[0] ?? (row.verification_method === 'Whatsapp' ? 'Whatsapp' : 'Email');
     invariant(channel === 'Whatsapp' ? typeof contact.whatsapp_phone_number === 'string' && E164_PATTERN.test(contact.whatsapp_phone_number) :
@@ -101,18 +115,22 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
     const roles = objectRows(selected.roles);
     const nonEditors = roles.filter(role => String(role.assignment_type).toLowerCase() !== 'editor');
     const roleIds = rows.map(row => id(row.role_id, 'Role ID'));
-    invariant(nonEditors.length > 0 && roleIds.length === nonEditors.length && new Set(roleIds).size === roleIds.length &&
-      nonEditors.every(role => roleIds.includes(String(role.id))), 'INVALID_ROLE_MAPPING', 'Map every non-editor template role exactly once.');
     const signingRoles = new Set(nonEditors.filter(role => String(role.assignment_type).toLowerCase() === 'signer').map(role => role.id));
+    invariant(signingRoles.size > 0 && new Set(roleIds).size === roleIds.length &&
+      roleIds.every(value => nonEditors.some(role => role.id === value)) && [...signingRoles].every(value => roleIds.includes(String(value))),
+    'INVALID_ROLE_MAPPING', 'Map every signing role exactly once; copy roles are optional.');
     signingRows = rows.filter(row => signingRoles.has(row.role_id));
     validateSigning(signingRows);
     const placements = objectRows(selected.pages ?? []).flatMap(page => objectRows(page.fields ?? []));
-    validateDigitalCertificateMethod(signingRows, placements.some(field => signingRoles.has(field.role_id)) ? 'collect' : 'virtual');
+    const placedSigners = new Set(placements.filter(field => signingRoles.has(field.role_id)).map(field => field.role_id));
+    validateDigitalCertificateMethod(signingRows, placedSigners.size ? 'collect' : 'virtual');
+    invariant(!placedSigners.size || [...signingRoles].every(role => placedSigners.has(role)), 'INVALID_ENTRIES', 'Every signing role needs a field in a collect template.');
     const editorRoles = new Set(roles.filter(role => String(role.assignment_type).toLowerCase() === 'editor').map(role => role.id));
     const editorIds = new Set(placements.filter(field => editorRoles.has(field.role_id)).map(field => field.field_id));
     const fields = objectRows(body.editor_fields ?? []);
-    invariant(fields.every(field => editorIds.has(field.field_id)) && new Set(fields.map(field => field.field_id)).size === fields.length,
-      'INVALID_EDITOR_FIELDS', 'Use unique editor field IDs from the selected template.');
+    invariant(fields.length === editorIds.size && fields.every(field => editorIds.has(field.field_id) && typeof field.value === 'string' && field.value.trim()) &&
+      new Set(fields.map(field => field.field_id)).size === fields.length,
+      'INVALID_EDITOR_FIELDS', 'Supply every editor field exactly once with a non-empty value.');
     if (body.tags !== undefined) invariant((body.tags as string[]).every(tag => tag.trim()), 'INVALID_INPUT', 'Tags must not be empty.');
     path = await client.accountPath(`/templates/${templateId}/documents`);
   } else {
@@ -128,6 +146,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
       const entries = objectRows(body.entries);
       invariant(entries.length > 0, 'INVALID_ENTRIES', 'Collect mode requires field placements.');
       const pages = new Map(objectRows(selected.pages ?? []).map(page => [page.id, page]));
+      const placedSigners = new Set<unknown>();
       for (const entry of entries) {
         const page = pages.get(id(entry.page_id, 'Page ID'));
         invariant(page, 'INVALID_ENTRIES', 'The page does not belong to this document.');
@@ -136,6 +155,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
         for (const field of fields) {
           id(field.field_id, 'Field ID');
           invariant(rows.some(row => row.id === field.signer_id), 'INVALID_ENTRIES', 'A field refers to an unmapped signer.');
+          placedSigners.add(field.signer_id);
           invariant(record(field.display_settings), 'INVALID_ENTRIES', 'Field placement geometry is required.');
           const geometry = field.display_settings;
           invariant(typeof page.width === 'number' && typeof page.height === 'number' &&
@@ -143,6 +163,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
           'INVALID_ENTRIES', 'The field placement must fit inside the document page.');
         }
       }
+      invariant(rows.every(row => placedSigners.has(row.id)), 'INVALID_ENTRIES', 'Every collect signer must own at least one field.');
     }
     path = `/documents/${documentId}/assignments`;
   }

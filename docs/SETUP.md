@@ -42,11 +42,11 @@ Informe o contato necessário antes de solicitar assinatura; o cadastro aceita s
 `POST /accounts/{accountId}/templates/{templateId}/documents`
 
 - Selecione um modelo pronto no mesmo workspace (`GET /accounts/{accountId}/templates`).
-- Mapeie uma entrada em `signers` para cada papel não-editor: `role_id` do modelo e `id` do signatário existente.
-- Para campos do editor, use `editor_fields: [{"field_id":"ID_DO_CAMPO","value":"VALOR"}]`. Remova esse campo se o modelo não tiver campos do editor.
+- Mapeie uma entrada em `signers` para cada papel Signer: `role_id` do modelo e `id` do signatário existente, ou `email` e `name` para resolução/criação inline. CopyReceiver é opcional.
+- Preencha todos os campos do editor com valores não vazios; use `editor_fields: [{"field_id":"ID_DO_CAMPO","value":"VALOR"}]`. Remova esse campo se o modelo não tiver campos do editor.
 - A receita usa verificação e notificação por `Email`. `Whatsapp`, `DigitalCertificate` (A1/A3) e `IdDocumentFaceMatchBasic` (biometria) também são aceitos; canais, requisitos de CPF/CNPJ e revisão estão em [API.md](API.md#verificação-e-notificação).
 - `name`, `message`, `expires_at` e `tags` são opcionais. Expiração exige ISO 8601 com fuso, pelo menos uma hora à frente.
-- **Esta chamada cria o documento e inicia o fluxo de assinatura.** Use somente destinatários autorizados no teste.
+- **Esta chamada cria o documento e inicia o fluxo de assinatura em segundo plano.** A resposta inicial é uploaded/assignment null; acompanhe pending_signature/assignment_created ou failed/document_processing_failed. Use somente destinatários autorizados no teste.
 
 Os IDs ilustrativos em `recipes/requests.json` devem ser substituídos por IDs do workspace. O HTTP Request oferece um corpo JSON completo. A execução real com `signers`, `notification_methods` e `tags` foi aprovada em 2026-10-04, com documento assinado e certificado; veja `TESTING.md`.
 
@@ -62,7 +62,7 @@ O modo `collect` exige campos posicionados em páginas e está validado no clien
 
 Use `GET /documents/{documentId}?expand=assignment` para verificar o estado real e o workspace. Trate URLs de artefatos como endpoints autenticados, não como links públicos prontos para compartilhar.
 
-Para **Nova requisição na API**, listas usam chave de dados `data` e chave única `id`. `page=1&per-page=50` é apenas uma página. Não anuncie leitura de todos os registros sem testar paginação. Deduplicar somente por documento não identifica todas as mudanças de status; prefira notificações recebidas para eventos de assinatura.
+Para **Nova requisição na API**, listas usam chave de dados `data` e chave única `id` (`document_id` para contratos CLM). `page=1&per-page=50` é apenas uma página. Não anuncie leitura de todos os registros sem testar paginação. Deduplicar somente por documento não identifica todas as mudanças de status; prefira notificações recebidas para eventos de assinatura.
 
 ## Assinafy → Pluga
 
@@ -72,14 +72,18 @@ Para **Nova requisição na API**, listas usam chave de dados `data` e chave ún
 4. Configure a inscrição pela Assinafy ou pela receita `register_subscription`, uma única vez na instalação. Ela envia `url`, `email`, `events` e `is_active: true`. Escolha os eventos em `GET /webhooks/event-types`. Não inclua essa chamada em cada execução da automação.
 5. Filtre `account_id` pelo workspace esperado e `event` pelo evento desejado. Para conclusão de todas as assinaturas, use `document_ready`; para cada assinatura, `signer_signed_document`.
 6. No evento de documento, use **`object.id`** como ID do documento. O **`id` superior é o ID da atividade**, não do documento. O objeto de `signer_created` é um signatário, e eventos de modelo trazem um modelo.
-7. Consulte novamente o documento na API antes de executar ações que dependam do estado. `document_ready` informa que todos assinaram; o objeto pode estar em `certificating` ou já em `certificated`, como observado no teste real. A entrega do evento por si só não garante que o PDF certificado já esteja disponível. Aguarde confirmação de `certificated`/artefato disponível para baixá-lo.
+7. Consulte novamente o documento na API antes de executar ações que dependam do estado. `document_ready` é emitido após a certificação e as revisões de identidade necessárias. A entrega do evento por si só não garante que o PDF certificado já esteja disponível. Aguarde confirmação de `certificated`/artefato disponível para baixá-lo.
 8. Verifique em `GET /accounts/{accountId}/webhooks` a entrega (`delivered`, `http_status`) e, na Pluga, a execução do passo de destino. Um HTTP 2xx da recepção não demonstra que toda a automação terminou.
 
 O evento real também pode incluir dados pessoais do usuário em `subject` e metadados em `origin`. Não repasse o envelope completo para destinos adicionais; mapeie apenas os campos necessários e preserve a confidencialidade dos logs.
 
 O envelope contém `id`, `event`, `account_id`, `created_at` (Unix em segundos), `subject`, `object`, `payload`, `origin` e `message`. Campos adicionais devem ser tolerados. Um evento pode ser repetido ou chegar fora de ordem. Use `account_id + ":" + id` como chave em armazenamento persistente antes de efeitos duplicáveis; a presença dessa chave no helper não implementa deduplicação na Pluga.
 
-A API suporta Standard Webhooks: crie o endpoint com signing_enabled e guarde o secret da resposta, inclusive com OAuth. Listas/consultas não retornam esse segredo; somente API key pode consultá-lo ou rotacioná-lo depois. Verifique corpo original, webhook-id, webhook-timestamp e webhook-signature antes de usar o evento. O cliente inclui verifyWebhookSignature. Se a Pluga não permitir essa verificação, use um receptor seu para verificar antes de encaminhar. Mantenha a URL privada e confirme o objeto por GET autenticado. A API tenta entregar até duas vezes, com três segundos entre tentativas.
+A API suporta Standard Webhooks: crie o endpoint com signing_enabled e guarde o secret da resposta, inclusive com OAuth. Listas/consultas não retornam esse segredo; somente API key pode consultá-lo depois; OAuth com webhooks:write também pode rotacioná-lo. PUT que habilita assinatura retorna o novo segredo uma vez. Verifique corpo original, webhook-id, webhook-timestamp e webhook-signature antes de usar o evento. O cliente inclui verifyWebhookSignature. Se a Pluga não permitir essa verificação, use um receptor seu para verificar antes de encaminhar. Mantenha a URL privada e confirme o objeto por GET autenticado. A API tenta entregar até seis vezes, cerca de dez minutos entre tentativas, para conexão/timeout, 408, 429 e 5xx. Dez falhas consecutivas pausam o endpoint; consulte is_held/held_since e o histórico com attempt/kind/will_retry.
+
+## Contratos CLM
+
+Use as receitas list_contracts, get_contract, update_contract, get_contract_family, renew_contract e terminate_contract. Os termos pertencem a um documento existente e usam document_id como chave. Para aditivos, use link_contract_amendment no documento do instrumento. Preserve arrays/objetos e copie updated_at da consulta antes de alterar termos; 409 exige reconciliação. O [fluxo de CLM](CONTRACTS.md) contém todos os requests/responses e eventos.
 
 ## PDF, erros e recuperação
 
@@ -91,6 +95,6 @@ HTTP 401: confira a chave; 403: permissões/workspace; 400/422: campos; 429: res
 
 - [Guia oficial Pluga Webhooks](https://pluga.zendesk.com/hc/pt-br/articles/360007678434-Pluga-Webhooks-Como-criar-automatiza%C3%A7%C3%B5es-com-ferramentas-n%C3%A3o-integradas-%C3%A0-Pluga)
 - [Documentação Assinafy](https://api.assinafy.com.br/v1/docs), seções Authentication, Webhooks e Webhook Payloads.
-- [Contrato OpenAPI Assinafy](https://api.assinafy.com.br/v1/docs/openapi.json), consultado em 2026-10-09.
+- [Contrato OpenAPI Assinafy](https://api.assinafy.com.br/v1/docs/openapi.json), consultado em 2026-10-28.
 
 - [HTTP Request: corpo e cabeçalhos JSON](https://pluga.co/ferramentas/http-request/integracao/), consultado em 2026-10-04. Recurso Premium; a conta de teste usa o período de experimentação.
