@@ -11,6 +11,8 @@ npm run test:coverage
 
 `check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos, assinaturas Standard Webhooks, rotação OAuth, signatários inline, termos/aditivos CLM, paginação por document_id, conflitos e eventos de contrato.
 
+Use releases corrigidos das linhas suportadas: Node.js 22.23.4+, 24.22.1+ ou 26.12.1+. A matriz da CI resolve o patch mais recente de cada major.
+
 `contract` lê o OpenAPI público e verifica requests/responses, schemas referenciados, endpoints auxiliares, receitas, parâmetros, catálogo de eventos e autenticação. Também pode receber um arquivo local:
 
 ```sh
@@ -64,4 +66,4 @@ As execuções de produção de 2026-10-04 estão registradas em [live-acceptanc
 
 GitHub Actions executa os checks em Node.js 22, 24 e 26, valida documentação e o contrato público da API. Nenhum segredo de workspace é necessário no CI. Uma indisponibilidade do OpenAPI impede o check de contrato e deve ser resolvida antes do release.
 
-Atualize package.json/package-lock.json com uma versão minor, execute os checks e crie a tag `vVERSÃO` no commit aprovado. Faça push do commit e da tag, confira o SHA do workflow e aguarde todas as execuções terminarem. Não publique credentials, artefatos locais, AGENTS.md ou CLAUDE.md.
+Atualize package.json/package-lock.json com a versão compatível com a mudança, execute os checks e crie a tag `vVERSÃO` no commit aprovado. Faça push do commit e da tag, confira o SHA do workflow e aguarde todas as execuções terminarem. Não publique credentials, artefatos locais, AGENTS.md ou CLAUDE.md.

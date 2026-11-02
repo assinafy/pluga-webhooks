@@ -6,7 +6,7 @@ export const NOW = Date.UTC(2026, 9, 2, 20, 0, 0);
 export const credentials = { type: 'api_key', apiKey: 'test-secret', environment: 'production', accountId: 'workspace1' };
 export const account = { id: 'workspace1', name: 'Test workspace' };
 export const signer = { id: 'signer1', full_name: 'Test Signer', email: 'signer@example.com' };
-export const readyDocument = { id: 'document1', account_id: 'workspace1', name: 'Test contract', status: 'metadata_ready' };
+export const readyDocument = { id: 'document1', account_id: 'workspace1', name: 'Test contract', status: 'metadata_ready', assignment: null };
 export const template = {
   id: 'template1', name: 'Test template', status: 'ready',
   roles: [{ id: 'customer', name: 'Customer', assignment_type: 'signer' }, { id: 'editor', assignment_type: 'editor' }],

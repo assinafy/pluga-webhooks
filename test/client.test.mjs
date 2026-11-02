@@ -54,6 +54,9 @@ test('contradictory repeated pages and page limits fail instead of returning par
   await assert.rejects(new AssinafyClient(credentials, m.runtime).list('/documents'), hasCode('PAGINATION_INCONSISTENT')); m.done();
   const limit = mock([{ response: ok([{ id: 'd1' }], { 'X-Pagination-Page-Count': '2' }) }]);
   await assert.rejects(new AssinafyClient(credentials, { ...limit.runtime, maxPages: 1 }).list('/documents'), hasCode('PAGINATION_LIMIT')); limit.done();
+  const changing = mock([{ response: ok([{ id: 'd1' }], { 'X-Pagination-Page-Count': '3' }) },
+    { response: ok([{ id: 'd2' }], { 'X-Pagination-Page-Count': '2' }) }]);
+  await assert.rejects(new AssinafyClient(credentials, changing.runtime).list('/documents'), hasCode('PAGINATION_INCONSISTENT')); changing.done();
 });
 test('rate-limit errors preserve delay but redact upstream bodies', async () => {
   const m = mock([{ response: new Response('test-secret person@example.com', { status: 429, headers: { 'Retry-After': '12' } }) }]);

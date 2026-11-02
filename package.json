@@ -1,11 +1,11 @@
 {
   "name": "@assinafy/pluga-webhooks",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "description": "Assinafy document workflows, OAuth2 and signed webhooks for Pluga",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "^22.23.4 || ^24.22.1 || ^26.12.1"
   },
   "exports": {
     ".": {

@@ -77,6 +77,14 @@ test('existing assignment blocks duplicate invitations', async () => {
   const m = mock([workspaceStep(), { response: ok({ ...readyDocument, assignment: { id: 'already-sent' } }) }]);
   await assert.rejects(runAction('request_signatures', client(m), { document_id: 'document1', body: { method: 'virtual', signers: [{ id: 'signer1' }] } }), hasCode('ALREADY_SENT')); m.done();
 });
+test('missing or malformed assignment state cannot create a duplicate invitation', async () => {
+  for (const assignment of [undefined, {}, true]) {
+    const selected = { ...readyDocument, assignment };
+    if (assignment === undefined) delete selected.assignment;
+    const m = mock([workspaceStep(), { response: ok(selected) }]);
+    await assert.rejects(runAction('request_signatures', client(m), { document_id: 'document1', body: { method: 'virtual', signers: [{ id: 'signer1' }] } }), hasCode('INVALID_RESPONSE')); m.done();
+  }
+});
 test('invalid verification pairs, multiple notifications, and noncontiguous steps cannot write', async () => {
   const m = mock([]);
   for (const signers of [

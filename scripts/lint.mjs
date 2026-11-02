@@ -17,7 +17,16 @@ for (const path of files('.')) {
   }
   if (path.endsWith('.json')) {
     const text = readFileSync(path, 'utf8');
-    JSON.parse(text);
+    const value = JSON.parse(text);
+    const events = [value];
+    while (events.length) {
+      const item = events.pop();
+      if (item && typeof item === 'object') {
+        if (item.event === 'document_ready' && item.object?.type === 'Document')
+          assert.equal(item.object.status, 'certificated', `document_ready must use certificated status: ${path}`);
+        events.push(...Object.values(item));
+      }
+    }
     for (const email of text.matchAll(/[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})/g)) {
       assert.match(email[1], /^example\.(?:com|org|net)$/, `Use fictitious JSON contacts: ${path}`);
     }
@@ -26,6 +35,8 @@ for (const path of files('.')) {
   if (path.endsWith('.md')) {
     const text = readFileSync(path, 'utf8');
     assert.ok(text.trim(), `Empty document: ${path}`);
+    if (path === 'README.md') assert.ok(text.split('\n').length - 1 <= 200, 'README.md must stay within 200 lines.');
+    for (const block of text.matchAll(/```json\n([\s\S]*?)\n```/g)) JSON.parse(block[1]);
     for (const email of text.matchAll(/[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})/g)) {
       assert.match(email[1], /^example\.(?:com|org|net)$/, `Use fictitious contacts: ${path}`);
     }

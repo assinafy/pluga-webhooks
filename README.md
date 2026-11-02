@@ -1,12 +1,12 @@
 # Assinafy + Pluga
 
-Integre o ciclo de documentos da Assinafy com **Pluga Webhooks + HTTP Request**. O kit inclui receitas JSON, cliente TypeScript sem dependências de execução, API key, OAuth2 com PKCE, gestão de contratos (CLM), configuração de endpoints e verificação de webhooks assinados.
+Kit de integração do ciclo de documentos da Assinafy com **Pluga Webhooks + HTTP Request**. Inclui receitas JSON, cliente TypeScript sem dependências de execução, API key, OAuth2 com PKCE, contratos CLM, endpoints múltiplos e verificação de webhooks assinados.
 
-As receitas são instruções para configurar requisições manualmente. O código TypeScript executa no seu servidor ou processo Node.js; colar uma receita não instala esse código dentro da Pluga. Um conector nativo e a listagem no programa de parceiros dependem da aprovação da Pluga.
+As receitas orientam a configuração manual na Pluga; o código TypeScript executa no seu servidor. Um conector nativo e a publicação no catálogo dependem da aprovação da Pluga.
 
 ## Instalação e ambientes
 
-Use **Node.js 26 LTS**. Node.js 22 e 24 LTS também são suportados. TypeScript 7 é uma dependência de desenvolvimento; TypeScript não possui uma política de LTS equivalente à do Node.js.
+Use Node.js 26 LTS atualizado. Também são suportados Node.js 22.23.4+, 24.22.1+ e 26.12.1+; a CI testa as três linhas. TypeScript 7 é dependência de desenvolvimento.
 
 ```sh
 npm ci
@@ -19,10 +19,10 @@ npm run contract
 | Sandbox | `https://sandbox.assinafy.com.br/v1` | `https://app-sandbox.assinafy.com.br` |
 | Produção | `https://api.assinafy.com.br/v1` | `https://app.assinafy.com.br` |
 
-Credenciais e registros pertencem ao ambiente escolhido. Forneça os valores por variáveis de ambiente ou arquivo ignorado com permissões restritas. Os scripts exigem `ASSINAFY_ENVIRONMENT` explícito; o construtor mantém produção como padrão para clientes existentes.
+Credenciais e registros não atravessam ambientes. Os scripts exigem `ASSINAFY_ENVIRONMENT`; o construtor mantém produção como padrão para clientes existentes.
 
 ```js
-import { AssinafyClient, runAction, loadOptions } from './dist/index.js';
+import { AssinafyClient, runAction } from './dist/index.js';
 
 const client = new AssinafyClient({
   type: 'api_key',
@@ -33,262 +33,141 @@ const client = new AssinafyClient({
 await client.workspace();
 ```
 
-Cada cliente confirma acesso ao workspace em `GET /accounts`. O ID selecionado não reduz os privilégios da API key. Para atuar em workspaces de clientes, use OAuth2.
+Cada cliente confirma o workspace em `GET /accounts`. Para contas de clientes, prefira OAuth2; o ID selecionado não reduz os privilégios de uma API key.
 
-## Fluxo completo de documento
+## Fluxo completo
 
 ```mermaid
 flowchart TD
   A[Conectar e escolher workspace] --> B[Criar ou reutilizar signatários]
-  B --> C{Origem do documento}
-  C --> D[Modelo pronto: criar e solicitar assinatura]
-  C --> E[Upload multipart de PDF]
-  E --> F[Consultar processamento e páginas]
-  F --> G[Solicitar assinatura virtual ou collect]
-  D --> H[Verificar identidade e assinar]
-  G --> H
-  H --> I[Receber e verificar webhook]
-  I --> J[Consultar documento autenticado]
-  J --> R{pending_identity_review?}
-  R -->|Sim| S[Revisar identidade na Assinafy]
-  S --> J
-  R -->|Não| K[Aguardar certificated e baixar artefatos]
-  K --> L[Atualizar destino pelo ID do documento]
+  B --> C{Modelo ou PDF?}
+  C -->|Modelo ready| D[Criar documento e iniciar envio]
+  C -->|PDF| E[Upload e aguardar metadata_ready]
+  E --> F[Solicitar assinatura virtual ou collect]
+  D --> G[Signatário verifica identidade e assina]
+  F --> G
+  G --> H[Verificar webhook e reservar chave do evento]
+  H --> I[Consultar documento autenticado]
+  I --> J{Revisão de identidade pendente?}
+  J -->|Sim| K[Revisar e consultar novamente]
+  J -->|Não| L[Aguardar certificated e baixar artefato]
+  K --> L
+  L --> M[Atualizar destino pelo ID do documento]
 ```
 
-### 1. Conecte a Pluga
+### 1. Crie ou reutilize signatários
 
-Selecione **HTTP Request → Enviar uma mensagem via HTTP Request → Preencher campos com um JSON**. Esse modo preserva listas e objetos. Configure os headers:
-
-```json
-{
-  "X-Api-Key": "<ASSINAFY_API_KEY>",
-  "Accept": "application/json",
-  "Content-Type": "application/json"
-}
-```
-
-Para OAuth, substitua `X-Api-Key` por `Authorization: Bearer <ASSINAFY_ACCESS_TOKEN>`. A conexão responsável por OAuth deve executar consentimento e renovação; um header colado manualmente expira. Confira o suporte da modalidade Pluga contratada.
-
-Consulte `GET /accounts` e copie `data[].id` do workspace escolhido. A API responde com `{ "status": 200, "message": "", "data": ... }`. O cliente retorna `data`; a Pluga pode acrescentar outra camada. Selecione os campos pelo resultado do teste da ação.
-
-### 2. Crie ou reutilize os signatários
-
-Consulte `GET /accounts/ACCOUNT_ID/signers` antes de criar contatos novamente. Para `POST /accounts/ACCOUNT_ID/signers`:
-
-```json
-{
-  "full_name": "Signatário de exemplo",
-  "email": "signer@example.com",
-  "government_id": "390.533.447-05"
-}
-```
-
-Os dados são fictícios. Use destinatários autorizados. `government_id` é opcional para Email/WhatsApp; a API aceita CPF ou CNPJ, inclusive CNPJ alfanumérico, e normaliza a formatação. WhatsApp usa `whatsapp_phone_number` em E.164. Criar o contato não envia convite.
+Consulte `GET /accounts/ACCOUNT_ID/signers` antes de criar. `POST /accounts/ACCOUNT_ID/signers` aceita `full_name` e, opcionalmente, `email`, `whatsapp_phone_number` E.164 e `government_id` CPF/CNPJ. Criar o contato não envia convite.
 
 ```js
 const signer = await runAction('create_signer', client, {
   body: { full_name: 'Signatário de exemplo', email: 'signer@example.com' },
 });
-// Guarde signer.id na operação de origem.
 ```
 
-### 3. Prepare o documento
+### 2. Prepare e envie o documento
 
-**Modelo existente:** consulte `GET /accounts/ACCOUNT_ID/templates`, escolha um modelo `ready` e mapeie cada papel Signer exatamente uma vez. Papéis CopyReceiver são opcionais. Preencha todos os campos do editor pelos IDs do próprio modelo, com valores não vazios.
+Para um modelo `ready`, mapeie cada papel Signer exatamente uma vez, CopyReceiver quando necessário e todos os campos Editor. A criação retorna `uploaded` com `assignment: null` e termina de processar em segundo plano.
 
 ```js
-const roles = await loadOptions('template_roles', client, templateId);
 const sent = await runAction('create_document_from_template', client, {
   template_id: templateId,
-  body: {
-    name: 'Contrato de exemplo',
-    signers: [{ id: signer.id, role_id: roles[0].value, verification_method: 'Email' }],
-  },
+  body: { signers: [{ id: signer.id, role_id: roleId, verification_method: 'Email' }] },
 });
 ```
 
-**Essa chamada cria o documento e inicia o envio em segundo plano.** A resposta inicial tem `status: uploaded` e `assignment: null`; acompanhe até `pending_signature`/`assignment_created` ou `failed`/`document_processing_failed`. O exemplo pressupõe um único papel Signer e nenhum campo Editor. Também é possível enviar `email`, `name` e `whatsapp_phone_number` em vez de `id`: a API reutiliza o contato pelo e-mail ou cria um novo. Se ambos forem enviados, `id` prevalece. Certificado e biometria exigem contato existente com CPF/CNPJ apropriado.
-
-**PDF existente:** no cliente local, envie bytes por multipart. O transporte define o boundary; não informe `Content-Type` manualmente.
+Para PDF, use multipart sem definir `Content-Type`; o transporte cria o boundary. Aguarde `uploaded → metadata_processing → metadata_ready`. `virtual` aceita o processamento em andamento; `collect` exige páginas prontas e campos em pixels do raster a 150 DPI.
 
 ```js
 const form = new FormData();
 form.set('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'contrato.pdf');
 const uploaded = await client.upload(await client.accountPath('/documents'), form);
-const document = await runAction('get_document', client, { document_id: uploaded.id });
 ```
 
-Acompanhe `uploaded → metadata_processing → metadata_ready`. `virtual` aceita esses três estados e aguarda processamento; `collect` exige `metadata_ready`, páginas do documento e campos posicionados em pixels do raster a 150 DPI. Consulte novamente após um intervalo e trate `document_processing_failed` como falha.
+Depois, chame `request_signatures` com `method: "virtual"` ou `"collect"`. O cliente recusa assignment existente, contatos de outro workspace, passos inválidos e placements fora da página.
 
-Upload/download binários estão disponíveis no cliente local. O caminho demonstrado na Pluga começa com documento/modelo já disponível na Assinafy; confirme o suporte equivalente a multipart/binário no construtor da Pluga.
-
-### 4. Solicite a assinatura
-
-Para documento existente, `POST /documents/DOCUMENT_ID/assignments`:
-
-```json
-{
-  "method": "virtual",
-  "signers": [{
-    "id": "SIGNER_ID",
-    "verification_method": "Email",
-    "notification_methods": ["Email"],
-    "step": 1
-  }],
-  "message": "Confira o documento antes de assinar.",
-  "copy_receivers": ["COPY_RECEIVER_ID"]
-}
-```
-
-`message`, `copy_receivers`, `expires_at` e `step` são opcionais. Expiração exige ISO 8601 com fuso, pelo menos uma hora à frente. Informe `step` para todos os signatários ou nenhum, com sequência contínua a partir de 1. Signatários do mesmo passo assinam em paralelo. O cliente bloqueia documentos com assignment existente para evitar novo convite.
+### 3. Escolha verificação e notificação
 
 | Verificação | Notificação | Requisitos |
 |---|---|---|
-| `Email` | `Email` | Contato com e-mail |
-| `Whatsapp` | `Whatsapp` | Número E.164; recurso do plano e créditos |
-| `DigitalCertificate` | `Email` ou `Whatsapp` | `method: "virtual"`; CPF/CNPJ, recurso de certificado digital, ICP-Brasil A1/A3; um signatário por passo |
-| `IdDocumentFaceMatchBasic` | `Email` ou `Whatsapp` | CPF, recurso ID Document + Face Match; foto do documento, foto com o documento e prova de vida |
+| `Email` | `Email` | E-mail válido |
+| `Whatsapp` | `Whatsapp` | E.164, recurso do plano e créditos |
+| `DigitalCertificate` | `Email` ou `Whatsapp` | `virtual`, CPF/CNPJ, ICP-Brasil A1/A3 e um signatário por passo |
+| `IdDocumentFaceMatchBasic` | `Email` ou `Whatsapp` | CPF e recurso ID Document + Face Match |
 
-`notification_methods` aceita exatamente um canal. Se um lado for omitido, a API infere o outro; se ambos forem omitidos, usa Email. A1/A3 são certificados usados pelo signatário via Web PKI; o código enviado à API é `DigitalCertificate`. Consulte os endpoints de estimativa de custo da [API](https://api.assinafy.com.br/v1/docs) antes de envios que consumam créditos.
+Use exatamente um canal em `notification_methods`. Certificado digital não funciona com `collect` nem com modelo que tenha campos Signer posicionados. Na biometria, a captura consentida ocorre na interface da Assinafy; não envie imagens no payload. `InReview` pode levar o documento a `pending_identity_review` até aprovação ou rejeição.
 
-`DigitalCertificate` exige assignment `virtual`. O cliente rejeita `request_signatures` com `method: "collect"` e também `create_document_from_template` quando o modelo contém campos posicionados para papéis Signer, usando o código `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL` antes de enviar ou cobrar a solicitação.
+### 4. Receba e autentique eventos
 
-Biometria usa `verification_method: "IdDocumentFaceMatchBasic"` nas duas ações de envio. O cliente exige CPF normalizado no contato e o canal escolhido; a API aplica disponibilidade do recurso, validade do CPF e cobrança. O signatário dá consentimento e realiza a captura na interface de assinatura. Não envie imagens ou dados biométricos no payload da Pluga.
-
-### 5. Receba e verifique os eventos
-
-Crie **Webhooks → Notificação recebida** na Pluga e copie a URL privada. Consulte `GET /accounts/ACCOUNT_ID/webhooks/endpoints` e cadastre um endpoint próprio com `POST` no mesmo caminho:
-
-```json
-{
-  "name": "Pluga",
-  "url": "https://receiver.example.com/substitua-pela-url-da-pluga",
-  "email": "ops@example.com",
-  "events": ["document_ready", "signer_signed_document", "signer_rejected_document", "document_processing_failed"],
-  "is_active": true,
-  "signing_enabled": true
-}
-```
-
-Há um endpoint no plano gratuito e até três nos planos pagos. Cada um possui URL, eventos e assinatura próprios. Use uma URL distinta para cada integração. `/webhooks/subscriptions` continua funcionando e atua no endpoint mais antigo; os helpers legados preservam uma configuração existente diferente.
-
-Com assinatura habilitada, o receptor deve acessar o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Ao criar o endpoint com `signing_enabled: true`, guarde imediatamente o `secret` retornado por `registerWebhookEndpoint`; ele não aparece em listas ou consultas posteriores. Com API key, também é possível consultar `GET /accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret`. Essa consulta exige API key. OAuth com `webhooks:write` pode rotacionar por POST `.../secret/rotate`; o segredo antigo deixa de funcionar imediatamente. PUT que habilita assinatura também retorna o novo `secret` uma vez. Guarde o segredo somente no receptor.
+Crie uma URL privada na Pluga e registre um endpoint próprio em `POST /accounts/ACCOUNT_ID/webhooks/endpoints`. Se `signing_enabled` for `true`, guarde imediatamente o `secret` retornado; listas não o mostram.
 
 ```js
 import { verifyWebhookSignature, normalizeEvent } from './dist/index.js';
 
-const rawBody = await request.text(); // Antes de qualquer parser JSON.
+const rawBody = await request.text();
 await verifyWebhookSignature(rawBody, request.headers, webhookSecret);
 const event = normalizeEvent(JSON.parse(rawBody), accountId, request.headers.get('webhook-id'));
 ```
 
-O helper verifica HMAC-SHA256 usando Web Crypto, aceita entradas `v1` do padrão Standard Webhooks e rejeita timestamps fora de cinco minutos. Não serialize novamente o JSON antes de verificar. `normalizeEvent` filtra workspace e calcula uma chave estável; armazene-a persistentemente antes de efeitos duplicáveis. O helper não mantém esse armazenamento.
+Verifique o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Reserve `event.deduplication_key` atomicamente antes de efeitos repetíveis; o helper não mantém armazenamento. Se a Pluga não expuser corpo e headers originais, verifique em um receptor próprio antes de encaminhar.
 
-Se a modalidade Pluga não permitir verificar corpo/headers, use seu receptor para verificar antes de encaminhar os campos necessários à Pluga. Habilitar assinatura no envio não implementa a verificação no destino. Mantenha a URL privada e confirme o documento por GET autenticado.
+Eventos podem repetir e chegar fora de ordem. `document_ready` ocorre após certificação e revisões exigidas; `signer_signed_document` representa uma assinatura individual. Sempre confirme `object.id` por GET autenticado.
 
-O ID superior `id` identifica a atividade; `object.id` identifica o documento. O [exemplo fictício](examples/document-ready.json) mostra o envelope. `document_ready` é emitido após a certificação, incluindo a aprovação de revisões de identidade; `signer_signed_document` indica uma assinatura individual. Eventos podem se repetir e chegar fora de ordem. Cada endpoint recebe independentemente, com até seis tentativas, cerca de dez minutos entre elas. Erros de conexão, timeout, 408, 429 e 5xx permitem nova tentativa; outros status são finais. Após dez falhas consecutivas, `is_held` indica pausa: sondagens ocorrem após 3, 15 e 60 minutos, depois a cada seis horas. Uma sondagem bem-sucedida libera a fila. Alterar a URL ou enviar `is_active: true` também libera a pausa. Consulte entregas em `GET /accounts/ACCOUNT_ID/webhooks`.
-
-### 6. Confirme o estado e obtenha o arquivo
+### 5. Confirme e baixe
 
 ```js
 const current = await runAction('get_document', client, { document_id: event.document_id });
 if (current.status === 'certificated') {
   const pdf = await client.binary(`/documents/${current.id}/download/certificated`);
-  // Salve os bytes no destino autorizado.
 }
 ```
 
-Depois da última assinatura, o documento passa de `pending_signature` para `certificating` e depois `certificated`; `GET /documents/statuses` lista todos os estados. Consulte estado e artefatos até estarem disponíveis. `document.artifacts` sempre traz `original`, traz `thumbnail` quando a miniatura existe e, após a certificação, `certificated`, `certificate-page`, `bundle` e, com signatários `DigitalCertificate`, `pades`, que preserva as assinaturas ICP-Brasil. Baixe esses arquivos em `/documents/DOCUMENT_ID/download/ARTEFATO`; a miniatura JPEG usa `/documents/DOCUMENT_ID/thumbnail`. URLs de artefatos exigem autenticação; não são links públicos.
+O fim normal é `pending_signature → certificating → certificated`. Escolha somente artefatos presentes em `document.artifacts`: `original`, `certificated`, `certificate-page`, `bundle`, `thumbnail` e, para certificado digital, `pades`. Downloads aceitam até 50 MiB por padrão; redirects externos precisam de origem HTTPS configurada em `trustedDownloadOrigins` e não recebem credenciais.
 
-Com biometria, `assignment.signers[].identity_verification_status: "InReview"` exige revisão da conta. O signatário pode assinar enquanto isso; após todas as assinaturas, o documento aguarda em `pending_identity_review`. Aprove ou rejeite na Assinafy ou pelo [endpoint de revisão](docs/API.md#biometria-e-revisão-de-identidade). Aprovar todas as revisões libera a certificação; rejeitar cancela o documento. Os eventos `signer_identity_verified`, `signer_identity_verification_failed`, `signer_identity_review_required`, `signer_identity_review_approved` e `signer_identity_review_rejected` são reconhecidos por `normalizeEvent`; selecione somente eventos publicados pelo catálogo do ambiente.
+### 6. Associe termos CLM
 
-Downloads têm limite padrão de 50 MiB. Redirects externos exigem origens HTTPS em `trustedDownloadOrigins` e recebem a requisição sem API key/token. Esse parâmetro é configuração do deployment, sem controle pelo usuário final.
+`updateContract` registra vigência, valor, renovação e referências do CRM sem solicitar assinatura. Use `updated_at` como precondição, reconcilie HTTP 409 e liste por `-updated_at` para recuperar eventos perdidos. Aditivos são outros documentos ligados por `parent_document_id`; só alteram o pai quando certificados. Veja [payloads e respostas CLM](docs/CONTRACTS.md).
 
-### 7. Atualize o destino e recupere falhas
+### 7. Conecte contas com OAuth2
 
-Associe documento e registro de origem por ID. Atualize a linha, negócio ou card existente pelo estado consultado. Reserve atomicamente a chave do evento em armazenamento persistente antes de ações duplicáveis. Para criar documentos, reserve o ID da operação de origem e persista o ID retornado. Uma consulta seguida de POST não impede execuções simultâneas.
+Registre uma aplicação public ou confidential com callback HTTPS exato. O helper usa authorization code, PKCE S256, `state`, `iss` e hosts separados por ambiente.
+
+```js
+import { createOAuthAuthorization, exchangeOAuthCode } from './dist/index.js';
+
+const session = await createOAuthAuthorization({
+  clientId,
+  clientSecret,
+  environment: 'production',
+  redirectUri: 'https://app.example.com/oauth/callback',
+  scopes: ['account:read', 'documents:read', 'documents:write', 'templates:read'],
+});
+const tokens = await exchangeOAuthCode(session, callbackUrl, clientSecret);
+```
+
+Guarde sessão e tokens por conexão. Para refresh token, solicite `offline_access`; serialize refresh, persista o token rotacionado antes de usá-lo e nunca reutilize um code ou refresh token após resultado incerto. Revogue tokens ao desconectar.
+
+## Falhas e recuperação
 
 | Situação | Tratamento |
 |---|---|
 | 400 / 422 | Corrigir campos, papéis, canais ou geometria |
-| 401 | Reconectar; OAuth exige renovação controlada |
-| 403 | Conferir workspace, escopos e recursos do plano |
+| 401 | Reconectar ou renovar OAuth de forma serializada |
+| 403 | Conferir workspace, escopos e recurso do plano |
 | 429 | Respeitar `Retry-After` |
-| Timeout / 5xx após escrita | Conferir se o efeito ocorreu antes de replay |
-| Evento repetido | Usar reserva persistente e consultar estado atual |
+| Timeout / 5xx após escrita | Consultar o efeito antes de repetir |
+| Evento repetido | Reservar a chave e consultar o estado atual |
 
-O cliente não repete requisições automaticamente. `IntegrationError` informa `code`, `httpStatus`, `safeToRetry`, `outcomeUnknown` e `retryAfterSeconds`, sem expor corpos upstream. Resultado desconhecido de escrita exige reconciliação.
+Não há retry automático de mutações. `IntegrationError` expõe `code`, `httpStatus`, `safeToRetry`, `outcomeUnknown` e `retryAfterSeconds` sem incluir corpos privados do serviço.
 
-## Gestão de contratos após criar o documento
+## Referência
 
-Use os termos CLM para associar o documento ao CRM e acompanhar vigência e renovação:
-
-```js
-import { updateContract, getContract, listContracts } from './dist/index.js';
-
-await updateContract(client, documentId, {
-  status: 'active',
-  start_date: '2026-11-01',
-  end_date: '2027-10-31',
-  value: 1200,
-  currency: 'BRL',
-  auto_renew: true,
-  renewal_term_months: 12,
-  notice_period_days: 30,
-  external_references: [{ system: 'crm', id: 'DEAL_ID' }],
-});
-const terms = await getContract(client, documentId);
-await updateContract(client, documentId, { value: 1500, updated_at: terms.updated_at });
-const ending = await listContracts(client, { status: 'active', ending_within_days: 30 });
-```
-
-O cadastro de termos não envia assinatura. Para aditivos, crie outro documento, vincule-o pelo `parent_document_id` e assine-o; a alteração é aplicada ao pai quando o instrumento está `certificated`. `getContractFamily` consulta a família, `renewContract` renova por term/data e `terminateContract` encerra diretamente. Inscreva os eventos `document_contract_*`, verifique a assinatura e consulte os termos pelo `object.id` antes de atualizar o destino. Use `updated_at` como precondição e reconcilie 409; consultas periódicas ordenadas por `-updated_at` recuperam eventos perdidos. Contratos usam `document_id`, sem `id`. Veja [requests, responses e regras completas de CLM](docs/CONTRACTS.md).
-
-## OAuth2 para contas de clientes
-
-Registre a aplicação em **Integrações → Apps OAuth**. Use confidential no servidor que guarda segredo ou public em dispositivo/browser. Cadastre a URI HTTPS exata. O fluxo OAuth 2.1 authorization code exige PKCE:
-
-```js
-import { createOAuthAuthorization, exchangeOAuthCode, refreshOAuthToken, revokeOAuthToken } from './dist/index.js';
-
-const application = { clientId, clientSecret, environment: 'production' };
-const session = await createOAuthAuthorization({
-  ...application,
-  redirectUri: 'https://app.example.com/oauth/callback',
-  scopes: ['account:read', 'documents:read', 'documents:write', 'templates:read'],
-});
-// Guarde session no servidor, vinculada à sessão do usuário; redirecione para session.url.
-const tokens = await exchangeOAuthCode(session, callbackUrl, clientSecret);
-// Consuma a sessão uma vez e guarde tokens com acesso restrito.
-```
-
-O helper valida callback, `state`, `iss` e PKCE antes de trocar o código. Tokens são JSON simples, fora de `data`. Um token pertence a um workspace. Consulte `GET /accounts` com Bearer e guarde `data[0].id` junto à conexão; leia os escopos recebidos em `scope`.
-
-Access tokens duram uma hora. Para receber refresh token, registre e solicite `offline_access`. Execute um refresh por vez por conexão; cada refresh invalida o anterior. Persista o novo token antes de usá-lo. Timeout não autoriza repetir o token antigo. Ao desconectar, chame `revokeOAuthToken(application, token)` com o client que o emitiu.
-
-| Operação | Escopos usados |
-|---|---|
-| Workspace, inscrição e lista de endpoints | `account:read` |
-| Documentos, contatos, campos, catálogo/histórico de eventos | `documents:read` |
-| Criar documento/signatário e solicitar assinatura | `documents:write` e leitura para os preflights |
-| Modelos e papéis | `templates:read` |
-| Consultar/gravar contratos CLM | `documents:read` / `documents:write`, com leitura de workspace |
-| Criar/alterar/excluir endpoints | `webhooks:write` e leitura usada no setup |
-| Renovação em segundo plano | `offline_access` durante consentimento |
-
-Seu servidor mantém sessões, armazenamento de tokens e exclusão mútua no refresh. Esses helpers não instalam um conector nativo Pluga nem implementam login OIDC. Um [Cloudflare Quick Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/) fornece callback HTTPS temporário para desenvolvimento; use endereço estável em produção.
-
-## Referência e operação
-
-- [Todas as funções e payloads](docs/API.md)
-- [Gestão de contratos, aditivos e renovação](docs/CONTRACTS.md)
+- [Funções, tipos e payloads completos](docs/API.md)
+- [Contratos e aditivos](docs/CONTRACTS.md)
 - [Configuração manual na Pluga](docs/SETUP.md)
-- [Execução dos testes](docs/TESTING.md)
+- [Testes e release](docs/TESTING.md)
 - [Guia público](public-guide/README.md)
 - [Receitas JSON](recipes/requests.json)
-- [Documentação oficial](https://api.assinafy.com.br/v1/docs)
+- [OpenAPI oficial](https://api.assinafy.com.br/v1/docs/openapi.json)
 
-`npm run smoke` faz somente leituras. Forneça exatamente uma de `ASSINAFY_API_KEY` ou `ASSINAFY_ACCESS_TOKEN`, mais `ASSINAFY_ACCOUNT_ID` e `ASSINAFY_ENVIRONMENT`. `ASSINAFY_DOCUMENT_ID` habilita consulta de documento específico. O script imprime apenas um resumo.
-
-Credenciais, artefatos e arquivos locais `AGENTS.md`/`CLAUDE.md` são ignorados pelo Git. Exemplos publicados usam domínios reservados para dados fictícios. Nunca coloque segredos em URLs, eventos, receitas compartilhadas ou screenshots.
+`npm run smoke` faz somente leituras com credenciais de ambiente. `AGENTS.md`, `CLAUDE.md`, `.env`, `.secrets/` e `artifacts/` são locais/ignorados. Exemplos publicados usam domínios reservados; nunca registre credenciais, callbacks privados ou destinatários reais.

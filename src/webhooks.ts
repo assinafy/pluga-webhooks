@@ -41,8 +41,7 @@ export async function getSubscription(client: AssinafyClient): Promise<Subscript
 
 /** Initial setup only. A different existing destination must be handled explicitly in Assinafy. */
 export async function registerSubscription(client: AssinafyClient, input: Subscription): Promise<Subscription> {
-  invariant(record(input) && Object.keys(input).every(key => ['url', 'email', 'events', 'is_active'].includes(key)),
-    'INVALID_INPUT', 'Unsupported subscription field.');
+  validate(input, contract.webhookSubscriptionInput as Schema, contract.schemas as Record<string, Schema>);
   validateWebhookUrl(input.url);
   invariant(typeof input.email === 'string' && EMAIL_PATTERN.test(input.email),
     'INVALID_INPUT', 'A notification email is required.');

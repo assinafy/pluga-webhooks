@@ -43,6 +43,11 @@ test('bad registration inputs and unknown events do not write', async () => {
   const unknown = mock([workspaceStep(), { response: ok(null) }, { response: ok([{ id: 'different_event' }]) }]);
   await assert.rejects(registerSubscription(client(unknown), subscription), hasCode('UNKNOWN_EVENT')); unknown.done();
 });
+test('legacy setup accepts only plain JSON input', async () => {
+  const inherited = Object.assign(Object.create({ toJSON() { return { ...subscription, url: 'https://other.example.com' }; } }), subscription);
+  const m = mock([]);
+  await assert.rejects(registerSubscription(client(m), inherited), hasCode('INVALID_INPUT')); m.done();
+});
 test('subscription writes never retry on transport failure', async () => {
   const m = mock([workspaceStep(), { response: ok(null) }, { response: ok(subscription.events.map(id => ({ id }))) }, { error: new Error('secret') }]);
   await assert.rejects(registerSubscription(client(m), subscription), hasCode('MUTATION_OUTCOME_UNKNOWN')); m.done();
@@ -75,7 +80,7 @@ test('signer/template events and new event types do not invent a document ID', (
 test('local inbound acceptance: webhook triggers an authenticated document read before using status', async () => {
   const incoming = { ...event, account_id: 'workspace1', object: { ...event.object, id: 'document1', account_id: 'workspace1' } };
   const normalized = normalizeEvent(incoming, 'workspace1');
-  const m = mock([workspaceStep(), { response: ok({ id: 'document1', account_id: 'workspace1', status: 'certificated' }), check(url, init) {
+  const m = mock([workspaceStep(), { response: ok({ id: 'document1', account_id: 'workspace1', status: 'certificated', assignment: null }), check(url, init) {
     assert.equal(url.pathname, '/v1/documents/document1'); assert.equal(init.headers['X-Api-Key'], 'test-secret');
   } }]);
   assert.equal((await runAction('get_document', client(m), { document_id: normalized.document_id })).status, 'certificated'); m.done();

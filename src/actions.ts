@@ -1,7 +1,7 @@
 import pinnedContract from './contract.json' with { type: 'json' };
 import { AssinafyClient } from './client.js';
 import { invariant } from './errors.js';
-import { E164_PATTERN, EMAIL_PATTERN, id, record, validate } from './validation.js';
+import { E164_PATTERN, EMAIL_PATTERN, ID_PATTERN, id, record, validate } from './validation.js';
 import type { Schema } from './validation.js';
 import type { Resource } from './types.js';
 
@@ -15,6 +15,8 @@ async function document(client: AssinafyClient, documentId: string): Promise<Res
   const result = await client.get<Resource>(`/documents/${id(documentId)}`, { expand: 'assignment' });
   invariant(record(result) && result.id === documentId, 'INVALID_RESPONSE', 'The document response has an unexpected ID.');
   invariant(result.account_id === account.id, 'WORKSPACE_ACCESS_DENIED', 'The document belongs to another workspace.');
+  invariant(result.assignment === null || record(result.assignment) && typeof result.assignment.id === 'string' && ID_PATTERN.test(result.assignment.id),
+    'INVALID_RESPONSE', 'The document response has an unexpected assignment.');
   return result;
 }
 async function template(client: AssinafyClient, templateId: string): Promise<Resource> {

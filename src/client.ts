@@ -121,6 +121,7 @@ export class AssinafyClient {
     const result = new Map<string | number, T>();
     const signatures = new Set<string>();
     const maxPages = this.runtime.maxPages ?? 20;
+    let pageCount: number | undefined;
     for (let page = 1; page <= maxPages; page++) {
       const { data: rows, headers } = await this.envelope<T[]>('GET', path,
         { query: { ...query, page, 'per-page': 50 } });
@@ -130,19 +131,25 @@ export class AssinafyClient {
       const key = (row: T) => (row as Record<string, unknown>)[idKey] as string | number;
       const rawPages = headers.get('x-pagination-page-count');
       const pages = rawPages === null ? undefined : Number(rawPages);
-      if (pages !== undefined) invariant(Number.isInteger(pages) && pages >= 0, 'INVALID_RESPONSE', 'Invalid pagination metadata.');
-      invariant(pages !== 0 || rows.length === 0, 'PAGINATION_INCONSISTENT', 'Records were returned for an empty pagination range.');
+      if (pages !== undefined) {
+        invariant(Number.isInteger(pages) && pages >= 0, 'INVALID_RESPONSE', 'Invalid pagination metadata.');
+        invariant(pageCount === undefined || pageCount === pages, 'PAGINATION_INCONSISTENT', 'The API changed its pagination range during the lookup.');
+        pageCount = pages;
+      }
+      invariant(pageCount !== 0 || rows.length === 0, 'PAGINATION_INCONSISTENT', 'Records were returned for an empty pagination range.');
+      invariant(pageCount === undefined || page <= pageCount || rows.length === 0,
+        'PAGINATION_INCONSISTENT', 'Records were returned beyond the reported pagination range.');
       const signature = JSON.stringify(rows.map(key));
       const repeated = signatures.has(signature);
       // Some deployments repeat the final page when requesting beyond the end.
       if (repeated) {
-        invariant(pages === undefined || page > pages, 'PAGINATION_INCONSISTENT',
+        invariant(pageCount === undefined || page > pageCount, 'PAGINATION_INCONSISTENT',
           'The API repeated a page before the reported end. Refusing an incomplete lookup.');
         return [...result.values()];
       }
       signatures.add(signature);
       for (const row of rows) result.set(key(row), row);
-      if (pages !== undefined ? page >= pages : rows.length < 50) return [...result.values()];
+      if (pageCount !== undefined ? page >= pageCount : rows.length < 50) return [...result.values()];
       invariant(rows.length > 0, 'PAGINATION_INCONSISTENT', 'An empty page appeared before the reported end.');
     }
     throw new IntegrationError('PAGINATION_LIMIT', 'The lookup exceeded its page budget. No incomplete result will be used to create or send a document.');
