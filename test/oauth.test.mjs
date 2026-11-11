@@ -64,7 +64,7 @@ test('refresh sends each token once and preserves the newly rotated token', asyn
   assert.deepEqual(await refreshOAuthToken(app, 'refresh-test', m.runtime), rotated); m.done();
 });
 test('a refresh without a usable rotated token cannot be mistaken for a reusable connection', async () => {
-  for (const refresh_token of [undefined, null, '', 'invalid token']) {
+  for (const refresh_token of [undefined, null, '', 'invalid token', 'refresh-test']) {
     const m = mock([{ response: response(metadata) }, { response: response({ ...token, refresh_token }) }]);
     await assert.rejects(refreshOAuthToken(app, 'refresh-test', m.runtime), error => error.code === 'OAUTH_OUTCOME_UNKNOWN' && error.outcomeUnknown && !error.safeToRetry);
     m.done();

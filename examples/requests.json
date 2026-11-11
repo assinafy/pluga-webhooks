@@ -81,7 +81,7 @@
       "method": "GET",
       "path": "/documents/{documentId}",
       "query": {
-        "expand": "assignment"
+        "expand": "envelope_id,envelope"
       },
       "response_model": {
         "status": 200,
@@ -90,7 +90,9 @@
           "id": "document_example",
           "account_id": "workspace_example",
           "name": "Teste Pluga.pdf",
-          "status": "metadata_ready"
+          "status": "metadata_ready",
+          "envelope_id": null,
+          "envelope": null
         }
       }
     },
@@ -108,7 +110,8 @@
             "verification_method": "Email",
             "notification_methods": [
               "Email"
-            ]
+            ],
+            "embedded": false
           }
         ],
         "editor_fields": [
@@ -116,7 +119,8 @@
             "field_id": "field_example",
             "value": "Valor de teste"
           }
-        ]
+        ],
+        "max_total_credits": 1.5
       },
       "response_model": {
         "status": 200,
@@ -127,6 +131,9 @@
           "status": "uploaded",
           "assignment": null
         }
+      },
+      "headers": {
+        "Idempotency-Key": "<UNIQUE_DOCUMENT_REQUEST_KEY>"
       }
     },
     {
@@ -143,7 +150,8 @@
             "verification_method": "IdDocumentFaceMatchBasic",
             "notification_methods": [
               "Email"
-            ]
+            ],
+            "embedded": false
           }
         ],
         "editor_fields": [
@@ -151,7 +159,8 @@
             "field_id": "field_example",
             "value": "Valor de teste"
           }
-        ]
+        ],
+        "max_total_credits": 1.5
       },
       "response_model": {
         "status": 200,
@@ -177,9 +186,11 @@
             "verification_method": "Email",
             "notification_methods": [
               "Email"
-            ]
+            ],
+            "embedded": false
           }
-        ]
+        ],
+        "max_total_credits": 1.5
       },
       "response_model": {
         "status": 200,
@@ -202,9 +213,11 @@
             "verification_method": "IdDocumentFaceMatchBasic",
             "notification_methods": [
               "Email"
-            ]
+            ],
+            "embedded": false
           }
-        ]
+        ],
+        "max_total_credits": 1.5
       },
       "response_model": {
         "status": 200,
@@ -278,7 +291,8 @@
             "response_body": null,
             "error": null,
             "created_at": "2026-10-28T12:00:00Z",
-            "updated_at": "2026-10-28T12:00:00Z"
+            "updated_at": "2026-10-28T12:00:00Z",
+            "duration_ms": 184
           }
         ]
       }
@@ -338,7 +352,18 @@
       "method": "POST",
       "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate",
       "setup_only": true,
-      "oauth_scope": "webhooks:write"
+      "oauth_scope": "webhooks:write",
+      "body": {
+        "keep_previous": true
+      },
+      "response_model": {
+        "status": 200,
+        "message": "",
+        "data": {
+          "secret": "whsec_ZXhhbXBsZS1vbmx5",
+          "previous_secret_expires_at": "2026-11-12T12:00:00Z"
+        }
+      }
     },
     {
       "id": "create_document_from_template_inline",
@@ -356,7 +381,8 @@
             ],
             "email": "signer@example.com",
             "name": "Signatário de exemplo",
-            "whatsapp_phone_number": "+5548999990000"
+            "whatsapp_phone_number": "+5548999990000",
+            "embedded": false
           }
         ],
         "editor_fields": [
@@ -364,7 +390,8 @@
             "field_id": "field_example",
             "value": "Valor de teste"
           }
-        ]
+        ],
+        "max_total_credits": 1.5
       },
       "response_model": {
         "status": 200,
@@ -602,6 +629,9 @@
           "created_at": "2026-10-28T12:00:00Z",
           "updated_at": "2026-10-28T12:00:00Z"
         }
+      },
+      "query": {
+        "expand": "document"
       }
     },
     {
@@ -766,7 +796,8 @@
           "response_body": null,
           "error": null,
           "created_at": "2026-10-28T12:00:00Z",
-          "updated_at": "2026-10-28T12:00:00Z"
+          "updated_at": "2026-10-28T12:00:00Z",
+          "duration_ms": 184
         }
       }
     }

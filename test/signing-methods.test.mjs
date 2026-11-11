@@ -136,3 +136,19 @@ test('collect refuses a signer without a field and a template signing role witho
   await assert.rejects(runAction('create_document_from_template', new AssinafyClient(credentials, t.runtime),
     { template_id: template.id, body: { signers: [{ id: signer.id, role_id: 'customer' }, { id: 'signer2', role_id: 'second' }] } }), hasCode('INVALID_ENTRIES')); t.done();
 });
+
+for (const flow of ['template', 'virtual', 'collect']) for (const verification of methods) {
+  test(`${flow}: embedded ${verification} signing enforces supported methods and preserves credit ceilings`, async () => {
+    const allowed = ['Email', 'Whatsapp'].includes(verification);
+    const body = { signers: [{ id: signer.id, verification_method: verification, embedded: true, ...(flow === 'template' ? { role_id: 'customer' } : {}) }],
+      max_total_credits: 1.5, ...(flow === 'template' ? { editor_fields: [{ field_id: 'price', value: '20' }] } : { method: flow }), ...(flow === 'collect' ? { entries } : {}) };
+    const reads = flow === 'template' ? [workspaceStep(), { response: ok([template]) }] : allowed ? [workspaceStep(), { response: ok(document) }] : [];
+    const response = { id: 'created1', signing_urls: [{ signer_id: signer.id, url: null, embedded: true }] };
+    const m = mock([...reads, ...(allowed ? [{ response: ok([contact]) }, { response: ok(response), check(_, init) { assert.deepEqual(JSON.parse(init.body), body); } }] : [])]);
+    const call = runAction(flow === 'template' ? 'create_document_from_template' : 'request_signatures', new AssinafyClient(credentials, m.runtime),
+      { ...(flow === 'template' ? { template_id: template.id } : { document_id: document.id }), body });
+    if (allowed) assert.deepEqual(await call, response);
+    else await assert.rejects(call, hasCode('INVALID_VERIFICATION'));
+    m.done();
+  });
+}

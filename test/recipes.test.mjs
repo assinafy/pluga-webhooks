@@ -40,6 +40,8 @@ test('documented full action request examples conform to the request schemas', a
     const section = reference.split(`### ${name}\n`)[1].split('\n### ')[0];
     const body = JSON.parse(section.match(/```json\n([\s\S]*?)\n```/)[1]);
     validate(body, action.input, contract.schemas);
+    assert.deepEqual(Object.keys(body).sort(), Object.keys(action.input.properties).sort(), name);
+    if (body.signers) assert.deepEqual(Object.keys(body.signers[0]).sort(), Object.keys(action.input.properties.signers.items.properties).sort(), name);
     if (body.signers) assert.ok(body.signers.every(row => row.id === 'SIGNER_ID'));
     if (body.entries) assert.ok(body.entries.every(entry => entry.fields.every(field => field.signer_id === 'SIGNER_ID')));
   }

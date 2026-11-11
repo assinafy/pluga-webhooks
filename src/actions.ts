@@ -1,5 +1,5 @@
 import pinnedContract from './contract.json' with { type: 'json' };
-import { AssinafyClient } from './client.js';
+import { AssinafyClient, checkIdempotencyKey } from './client.js';
 import { invariant } from './errors.js';
 import { E164_PATTERN, EMAIL_PATTERN, ID_PATTERN, id, record, validate } from './validation.js';
 import type { Schema } from './validation.js';
@@ -7,12 +7,12 @@ import type { Resource } from './types.js';
 
 export const contract = pinnedContract;
 export type ActionId = keyof typeof contract.actions;
-type Input = { document_id?: string; template_id?: string; body?: Record<string, unknown> };
+type Input = { document_id?: string; template_id?: string; body?: Record<string, unknown>; idempotency_key?: string; expand?: readonly ('envelope_id' | 'envelope')[] };
 const schemas = contract.schemas as Record<string, Schema>;
 
-async function document(client: AssinafyClient, documentId: string): Promise<Resource> {
+async function document(client: AssinafyClient, documentId: string, expand?: Input['expand']): Promise<Resource> {
   const account = await client.workspace();
-  const result = await client.get<Resource>(`/documents/${id(documentId)}`, { expand: 'assignment' });
+  const result = await client.get<Resource>(`/documents/${id(documentId)}`, expand ? { expand: expand.join(',') } : undefined);
   invariant(record(result) && result.id === documentId, 'INVALID_RESPONSE', 'The document response has an unexpected ID.');
   invariant(result.account_id === account.id, 'WORKSPACE_ACCESS_DENIED', 'The document belongs to another workspace.');
   invariant(result.assignment === null || record(result.assignment) && typeof result.assignment.id === 'string' && ID_PATTERN.test(result.assignment.id),
@@ -38,6 +38,8 @@ function validateSigning(rows: Record<string, unknown>[]): void {
       ['Email', 'Whatsapp'].includes(String(notifications[0])), 'INVALID_NOTIFICATION', 'Choose exactly one notification channel.');
     const channel = Array.isArray(notifications) ? notifications[0] : undefined;
     const verification = row.verification_method ?? channel ?? 'Email';
+    invariant(row.embedded !== true || ['Email', 'Whatsapp'].includes(String(verification)),
+      'INVALID_VERIFICATION', 'Embedded signing supports Email or Whatsapp verification.');
     invariant(!channel || ['DigitalCertificate', 'IdDocumentFaceMatchBasic'].includes(String(verification)) || channel === verification,
       'INVALID_NOTIFICATION', 'Verification and notification channels must match.');
     if (row.step !== undefined) invariant(Number.isInteger(row.step) && Number(row.step) > 0,
@@ -93,11 +95,15 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
   invariant(Object.hasOwn(contract.actions, action), 'UNKNOWN_ACTION', 'Unknown action.');
   const definition = contract.actions[action];
   invariant(record(input) && Object.keys(input).every(key => ['body', ...(definition.path.includes('{documentId}') ? ['document_id'] : []),
-    ...(definition.path.includes('{templateId}') ? ['template_id'] : [])].includes(key)), 'INVALID_INPUT', 'Unknown action input.');
+    ...(definition.path.includes('{templateId}') ? ['template_id', 'idempotency_key'] : []),
+    ...(action === 'get_document' ? ['expand'] : [])].includes(key)), 'INVALID_INPUT', 'Unknown action input.');
+  if (input.idempotency_key !== undefined) checkIdempotencyKey(input.idempotency_key);
+  if (input.expand !== undefined) validate(input.expand, { type: 'array', items: { type: 'string', enum: ['envelope_id', 'envelope'] } }, schemas);
   const body = input.body === undefined ? {} : input.body;
   validate(body, definition.input as Schema, schemas);
-  if (action === 'get_document') return document(client, id(input.document_id, 'Document ID'));
+  if (action === 'get_document') return document(client, id(input.document_id, 'Document ID'), input.expand);
 
+  if (body.max_total_credits !== undefined) invariant(Number(body.max_total_credits) >= 0, 'INVALID_INPUT', 'The credit ceiling must be non-negative.');
   if (body.expires_at !== undefined) invariant(Date.parse(String(body.expires_at)) >= (client.runtime.now ?? Date.now)() + 3_600_000,
     'INVALID_EXPIRATION', 'Expiration must be at least one hour in the future.');
   if (action === 'create_signer') {
@@ -170,7 +176,7 @@ export async function runAction(action: ActionId, client: AssinafyClient, input:
     path = `/documents/${documentId}/assignments`;
   }
   await verifyContacts(client, rows, signingRows, (body.copy_receivers ?? []) as string[]);
-  return client.post<Resource>(path, body);
+  return client.post<Resource>(path, body, input.idempotency_key);
 }
 
 export type ListId = 'documents' | 'signers' | 'templates' | 'fields' | 'template_roles' | 'editor_fields' | 'document_pages';

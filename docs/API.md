@@ -10,6 +10,7 @@ Importe as funções e tipos de `dist/index.js` após `npm run build`. Os endpoi
 | `Credentials` | `type: api_key`, `apiKey`, `accountId`, `environment?`; ou `type: oauth2`, `accessToken`, `accountId`, `environment?` |
 | `Runtime` | `fetch?`, `now?`, `timeoutMs?`, `maxPages?`, `maxDownloadBytes?`, `trustedDownloadOrigins?` |
 | `Account` | `id`, `name?` |
+| `WebhookSecret` | `secret`, `previous_secret_expires_at?` e campos adicionais da API |
 | `Resource` | `id` e todos os campos adicionais da API |
 | `ActionId` | `create_signer`, `get_document`, `create_document_from_template`, `request_signatures` |
 | `ListId` | `documents`, `signers`, `templates`, `fields`, `template_roles`, `editor_fields`, `document_pages` |
@@ -30,8 +31,8 @@ O timeout padrão é 30 segundos; aceita 1–120000 ms. `maxPages` tem padrão 2
 | `workspace()` | `GET /accounts?page=N&per-page=50` | `Account` selecionado; coalesce consultas concorrentes e exige acesso ao ID configurado |
 | `accountPath(suffix)` | Consulta workspace quando necessário | `/accounts/ACCOUNT_ID` + suffix; use somente suffix definido pela aplicação |
 | `get(path, query?)` | GET autenticado, query codificada | `data` do envelope, com tipo genérico escolhido pelo chamador |
-| `envelope(method, path, options?)` | GET/POST/PUT/PATCH/DELETE; opções `query`, `json` ou `form` | `{data, headers}`; exige status do envelope igual ao HTTP |
-| `post(path, json)` | POST JSON autenticado | Recurso em `data`, com ID válido; use para criações |
+| `envelope(method, path, options?)` | GET/POST/PUT/PATCH/DELETE; opções `query`, `json` ou `form`; `idempotencyKey?` somente na criação por modelo | `{data, headers}`; exige status do envelope igual ao HTTP |
+| `post(path, json, idempotencyKey?)` | POST JSON autenticado | Recurso em `data`, com ID válido; use para criações |
 | `upload(path, form)` | POST multipart autenticado | Recurso criado em `data`, com ID válido; boundary gerado pelo transporte |
 | `list(path, query?, idKey?)` | GET paginado com 50 registros por página | Lista completa; `idKey` é `id` por padrão ou `document_id` para contratos; falha se páginas forem inconsistentes ou o orçamento acabar |
 | `binary(path)` | GET com negociação de JSON/PDF/ZIP/bytes | `Uint8Array`; rejeita páginas JSON/HTML e redirects não autorizados |
@@ -51,13 +52,13 @@ A resposta do upload é um Document, inicialmente em processamento, com pages e 
 
 ## Ações e listas
 
-`runAction(action, client, input?)` retorna o recurso inteiro de `data`. `input` admite `body` e os IDs exigidos pela ação. Rejeita campos desconhecidos, enums inválidos, controles e limites fora do contrato.
+`runAction(action, client, input?)` retorna o recurso inteiro de `data`. `input` admite `body` e os IDs exigidos pela ação; `get_document` admite `expand`, e criação por modelo admite `idempotency_key`. Rejeita campos desconhecidos, enums inválidos, controles e limites fora do contrato.
 
 | Ação | Input | Endpoint e retorno |
 |---|---|---|
 | `create_signer` | `body: {full_name, email?, whatsapp_phone_number?, government_id?}` | POST `/accounts/ACCOUNT_ID/signers` → Signer; nome obrigatório; contatos podem ser adicionados antes do envio |
-| `get_document` | `document_id`, body omitido ou `{}` | GET `/documents/DOCUMENT_ID?expand=assignment` → Document; verifica ID e workspace |
-| `create_document_from_template` | `template_id`, `body` descrito abaixo | POST `/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents` → Document; modelo ready, papéis completos, editor fields válidos e contatos acessíveis |
+| `get_document` | `document_id`, `expand?: ["envelope_id", "envelope"]`, body omitido ou `{}` | GET `/documents/DOCUMENT_ID` → Document; assignment incluído, verifica ID e workspace |
+| `create_document_from_template` | `template_id`, `body` abaixo, `idempotency_key?` | POST `/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents` → Document; modelo ready, papéis completos, editor fields válidos e contatos acessíveis |
 | `request_signatures` | `document_id`, `body` descrito abaixo | POST `/documents/DOCUMENT_ID/assignments` → Assignment; estado válido e nenhum assignment existente |
 
 `loadOptions(list, client, parentId?)` retorna `[{value: "ID", label: "Nome"}]`. Documentos, contatos, modelos e campos consultam a lista do workspace; campos incluem `include_standard=1`. `template_roles` e `editor_fields` exigem template ID e filtram os papéis/placements do modelo; `document_pages` exige document ID e usa o número de página retornado pela API.
@@ -79,6 +80,98 @@ Exatamente um canal por signatário. Sem os dois campos, usa Email. Só o canal 
 
 `DigitalCertificate` exige assignment `virtual`. Em `request_signatures`, use `method: "virtual"`. Em `create_document_from_template`, use um modelo sem campos posicionados para papéis Signer; esses campos fazem o modelo gerar um assignment `collect`. O SDK rejeita as duas combinações incompatíveis antes do envio com `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL`.
 
+### Limite de créditos e criação idempotente
+
+Em assignments e criação por modelo, `max_total_credits` é opcional, numérico, finito e não negativo. Use o `total_credits` da última estimativa. HTTP 409 com CreditCeilingExceeded recusa o envio sem cobrança; na criação por modelo, uma alta posterior pode terminar em failed/document_processing_failed, sem cobrança. O cliente preserva o HTTP 409 sem expor o corpo privado de erro. Os valores dos exemplos devem ser substituídos pela estimativa atual.
+
+A estimativa usa `client.envelope('POST', path, { json: body })` e não envia convites. Para `/documents/DOCUMENT_ID/assignments/estimate-cost`, envie:
+
+```json
+{
+  "method": "virtual",
+  "signers": [{ "verification_method": "Whatsapp", "notification_methods": ["Whatsapp"] }]
+}
+```
+
+Em collect, envie method collect e entries com as mesmas páginas, campos e signer_id da solicitação. Para `/accounts/ACCOUNT_ID/templates/TEMPLATE_ID/documents/estimate-cost`, envie:
+
+```json
+{
+  "signers": [{ "role_id": "ROLE_ID", "verification_method": "Whatsapp", "notification_methods": ["Whatsapp"] }]
+}
+```
+
+Ambos retornam este modelo completo; os números são ilustrativos. Saldos null significam ausência de limite. Verifique has_sufficient_resources e blocking_reason antes de criar:
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": {
+    "documents": 1,
+    "credits": 0.45,
+    "needs_extra_document": false,
+    "extra_document_cost": 1,
+    "total_credits": 0.45,
+    "breakdown": [{ "code": "NotificationWhatsapp", "name": "Whatsapp Notification", "cost": 0.45, "quantity": 1, "unit_cost": 0.45 }],
+    "document_balance": 10,
+    "credit_balance": 10,
+    "has_sufficient_resources": true,
+    "blocking_reason": null,
+    "message": null
+  }
+}
+```
+
+Na criação por modelo, envie `idempotency_key` em `runAction`, ou `idempotencyKey` em `envelope`; `post` aceita a chave no terceiro argumento. A chave segue no header `Idempotency-Key` somente no POST final, nunca nos preflights. Use um UUID ASCII novo para cada documento pretendido. A API vincula a chave ao modelo sem prazo de expiração: repetir a mesma chave devolve o documento original e ignora alterações no body. Um documento failed conserva a chave; documento excluído resulta em 404; requisição ainda em andamento resulta em 409. O SDK não repete chamadas automaticamente: persista chave e resultado no integrador antes de decidir reconciliar ou repetir.
+
+```js
+const sent = await runAction('create_document_from_template', client, {
+  template_id: templateId,
+  idempotency_key: savedRequestKey,
+  body: { signers: [{ id: signerId, role_id: roleId }], max_total_credits: estimate.total_credits },
+});
+```
+
+### Assinatura incorporada
+
+`embedded: true` em um papel Signer ou signer de assignment permite assinatura em iframe com Email ou Whatsapp. A notificação normal continua sendo enviada; `signing_urls` retorna `{ "signer_id": "SIGNER_ID", "url": null, "embedded": true }`. Certificado e biometria não aceitam embedded. O plano precisa de Embed; consulte `client.get(await client.accountPath(''), { expand: 'signing_features' })`. O campo signing_features informa DigitalCertificate, VerificationIdDocumentFaceMatchBasic, WhatsappNotification, VerificationBypass e Embed como booleanos; a API ainda verifica plano e saldo no envio. Bypass não é uma seleção publicada no schema das quatro ações deste kit.
+
+Registre as origens do seu frontend com API key: POST `/accounts/ACCOUNT_ID/embed-origins` e PUT `.../embed-origins/ORIGIN_ID` usam o mesmo request completo:
+
+```json
+{ "origin": "https://app.example.com" }
+```
+
+Ambos retornam o modelo abaixo; GET `/accounts/ACCOUNT_ID/embed-origins` retorna uma lista desses objetos em data. DELETE `.../embed-origins/ORIGIN_ID` não envia body e retorna `{ "status": 200, "message": "", "data": [] }`.
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": {
+    "id": "ORIGIN_ID",
+    "origin": "https://app.example.com",
+    "created_at": "2026-11-11T12:00:00Z"
+  }
+}
+```
+
+A origem é exata, sem path, query, fragmento, credenciais ou wildcard; HTTPS, ou HTTP apenas em localhost/127.0.0.1. Há no máximo dez origens. Use `client.post` para criar, `client.get` para listar e `client.envelope` para PUT/DELETE. Depois do assignment criado e do documento pronto, POST `/documents/DOCUMENT_ID/assignments/ASSIGNMENT_ID/signers/SIGNER_ID/embed-sessions`, sem body, retorna:
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": {
+    "url": "https://app.assinafy.com.br/embed/ONE_TIME_TOKEN",
+    "expires_at": "2026-11-11T12:05:00Z"
+  }
+}
+```
+
+Use `client.envelope('POST', path)`: a sessão não tem id. URLs são privadas, de uso único, válidas por cinco minutos. Essas operações de origens e sessões não aceitam tokens de aplicativos OAuth. Mantenha a API key no backend e autorize cada usuário antes de emitir uma sessão. O frontend segue o handshake do [guia oficial de assinatura incorporada](https://api.assinafy.com.br/v1/docs), conferindo `event.origin` e `event.source`; eventos do iframe são apenas sinais para consultar o documento autenticado. O kit não implementa o frontend nem o armazenamento de sessões.
+
 ### Biometria e revisão de identidade
 
 Request completo para documento existente, POST `/documents/DOCUMENT_ID/assignments`:
@@ -93,9 +186,11 @@ Request completo para documento existente, POST `/documents/DOCUMENT_ID/assignme
       "notification_methods": [
         "Email"
       ],
-      "step": 1
+      "step": 1,
+      "embedded": false
     }
-  ]
+  ],
+  "max_total_credits": 1.5
 }
 ```
 
@@ -189,10 +284,11 @@ Templates aceitam `id` ou `email` por papel. Sem id, o e-mail reutiliza um conta
 | `updateWebhookEndpoint(client, endpointId, input)` | PUT `/accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID`; somente campos enviados | WebhookEndpoint atualizado |
 | `deleteWebhookEndpoint(client, endpointId)` | DELETE no endpoint selecionado | `void`; envelope HTTP contém `data: []` |
 | `getWebhookSecret(client, endpointId, rotate?)` | GET `.../secret`; com `rotate: true`, POST `.../secret/rotate` | String `whsec_...`; GET exige API key, rotação também aceita OAuth `webhooks:write`; HTTP 400 quando a assinatura está desativada |
+| `rotateWebhookSecret(client, endpointId, input?)` | POST `.../secret/rotate`; `{ keep_previous?: boolean }` | `WebhookSecret` completo; API key ou OAuth `webhooks:write` |
 | `verifyWebhookSignature(rawBody, headers, secret, now?)` | Nenhuma; corpo UTF-8 original e objeto Headers | Promise void se válida; HMAC-SHA256 e janela de ±300 s |
 | `normalizeEvent(input, accountId, webhookId?)` | Nenhuma; objeto já autenticado, ID do workspace e header opcional | Evento reduzido descrito abaixo |
 
-Cadastro/atualização de endpoints exigem URL pública HTTPS neste cliente, e-mail e códigos de evento do catálogo. O serviço permite um endpoint gratuito ou até três em planos pagos; a API aplica o limite. `is_active` tem padrão true e `signing_enabled` false. Rotacionar o segredo invalida imediatamente o anterior. Não grave o segredo no payload de evento nem o encaminhe à Pluga.
+Cadastro/atualização de endpoints exigem URL pública HTTPS neste cliente, e-mail e códigos de evento do catálogo. O serviço permite um endpoint gratuito ou até três em planos pagos; a API aplica o limite. `is_active` tem padrão true e `signing_enabled` false. A rotação padrão invalida imediatamente o segredo anterior; `keep_previous: true` conserva a assinatura antiga junto à nova por 24 horas. Não grave o segredo no payload de evento nem o encaminhe à Pluga.
 
 Criar com `signing_enabled: true` retorna `secret` uma vez, inclusive por OAuth. Guarde-o antes de concluir a instalação. Reutilizar um endpoint já existente retorna os dados de listagem, sem secret. Consultar o segredo depois exige API key. A rotação aceita OAuth com `webhooks:write` e retorna o novo segredo; atualize o receptor imediatamente. PUT que habilita assinatura retorna o novo `secret` uma vez, inclusive por OAuth.
 
@@ -213,6 +309,31 @@ O helper legado exige `is_active: true` e configuração completa; alteração d
 ```
 
 Sem `webhookId`, a chave termina no ID da atividade. `document_id` aparece somente para eventos conhecidos de documento, com `object.type: Document`; `status` aparece quando fornecido. Eventos novos são tolerados sem inventar document ID. O helper não autentica mensagens nem implementa deduplicação persistente.
+
+### Rotação com período de transição
+
+```js
+const rotated = await rotateWebhookSecret(client, endpointId, { keep_previous: true });
+```
+
+Request completo do POST `/accounts/ACCOUNT_ID/webhooks/endpoints/ENDPOINT_ID/secret/rotate`:
+
+```json
+{ "keep_previous": true }
+```
+
+```json
+{
+  "status": 200,
+  "message": "",
+  "data": {
+    "secret": "whsec_ZXhhbXBsZS1vbmx5",
+    "previous_secret_expires_at": "2026-11-12T12:00:00Z"
+  }
+}
+```
+
+Sem keep_previous, ou com false, a resposta não contém previous_secret_expires_at. `getWebhookSecret(..., true)` mantém o retorno string e a rotação imediata. Com true, webhook-signature carrega as duas assinaturas até o prazo; verifyWebhookSignature aceita a assinatura correspondente à chave configurada. Guarde o novo segredo e troque o receptor antes do prazo. Uma segunda rotação remove o segredo mais antigo, mesmo antes das 24 horas. Resposta incompleta mantém outcomeUnknown; não repita a rotação para tentar recuperar a primeira resposta.
 
 ### Histórico e reenvio
 
@@ -240,7 +361,8 @@ Use `client.list(await client.accountPath('/webhooks'), query)` para GET de toda
       "response_body": null,
       "error": null,
       "created_at": "2026-10-28T12:00:00Z",
-      "updated_at": "2026-10-28T12:00:00Z"
+      "updated_at": "2026-10-28T12:00:00Z",
+      "duration_ms": 184
     }
   ]
 }
@@ -284,7 +406,7 @@ Omita client_secret em clientes public. A troca usa `application/x-www-form-urle
 }
 ```
 
-`refresh_token` existe quando offline_access foi consentido; `id_token` depende de openid. O cliente não valida ID tokens OIDC. No refresh, envie grant_type=refresh_token, client_id, refresh_token e client_secret apenas para confidential. Na revogação, envie client_id, token e o segredo se aplicável. Tokens rotacionam; serialize refresh por conexão, persista o novo token antes de uso e reconcilie timeouts. Não tente novamente com o token antigo.
+`refresh_token` existe quando offline_access foi consentido; `id_token` depende de openid. O cliente não valida ID tokens OIDC. No refresh, envie grant_type=refresh_token, client_id, refresh_token e client_secret apenas para confidential. Na revogação, envie client_id, token e o segredo se aplicável. O helper recusa refresh sem um token novo e utilizável. Tokens rotacionam; serialize refresh por conexão, persista o novo token antes de uso e reconcilie timeouts. Não tente novamente com o token antigo.
 
 Requests completos de refresh e revogação, com o mesmo Content-Type da troca de código:
 
@@ -330,7 +452,7 @@ Respostas de gravação incompatíveis com a configuração solicitada também t
 - `OAUTH_OUTCOME_UNKNOWN`: troca possivelmente concluída; não reutilize code/refresh token automaticamente.
 - `INVALID_INPUT`, `INVALID_ID`, `INVALID_CREDENTIALS`, `INVALID_RUNTIME`: corrigir configuração/input.
 - `WORKSPACE_ACCESS_DENIED`, `SIGNER_NOT_FOUND`, `INVALID_CONTACT`, `INVALID_GOVERNMENT_ID`: corrigir conexão ou contato.
-- `TEMPLATE_NOT_READY`, `INVALID_ROLE_MAPPING`, `INVALID_EDITOR_FIELDS`, `DOCUMENT_NOT_READY`, `ALREADY_SENT`, `INVALID_ENTRIES`, `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL`: corrigir estado, método ou mapeamento.
+- `TEMPLATE_NOT_READY`, `INVALID_ROLE_MAPPING`, `INVALID_EDITOR_FIELDS`, `DOCUMENT_NOT_READY`, `ALREADY_SENT`, `INVALID_ENTRIES`, `INVALID_VERIFICATION`, `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL`: corrigir estado, método ou mapeamento.
 - `INVALID_RESPONSE`, `PAGINATION_LIMIT`, `PAGINATION_INCONSISTENT`, `RESPONSE_TOO_LARGE`, `REDIRECT_BLOCKED`, `INVALID_FILE_RESPONSE`, `TRANSPORT_ERROR`: revisar resposta/limites/transporte.
 - `INVALID_WEBHOOK_SIGNATURE`, `INVALID_EVENT`, `UNKNOWN_EVENT`, `EXISTING_SUBSCRIPTION`: corrigir receptor/configuração.
 - `INVALID_OAUTH_CALLBACK`, `OAUTH_DENIED`, `OAUTH_ERROR`: interromper fluxo e reconectar/corrigir aplicação.
@@ -374,7 +496,7 @@ Response HTTP:
 
 ### get_document
 
-`GET /documents/{documentId}`
+`GET /documents/{documentId}` não envia body e já inclui assignment. Para os campos envelope_id/envelope do exemplo, envie `expand: ["envelope_id", "envelope"]` em runAction; a query HTTP é `expand=envelope_id,envelope`. Ambos são null para documento avulso e ausentes sem expansão.
 
 Response HTTP:
 
@@ -399,7 +521,8 @@ Response HTTP:
     "tags": [
       {
         "id": "RESOURCE_ID",
-        "name": "EXAMPLE"
+        "name": "EXAMPLE",
+        "color": null
       }
     ],
     "assignment": {
@@ -511,7 +634,8 @@ Response HTTP:
       "signing_urls": [
         {
           "signer_id": "SIGNER_ID",
-          "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com"
+          "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com",
+          "embedded": false
         }
       ],
       "document_id": "DOCUMENT_ID",
@@ -530,7 +654,9 @@ Response HTTP:
     "updated_at": "2026-06-03T03:54:16Z",
     "has_contract": false,
     "verification_code": null,
-    "verification_url": null
+    "verification_url": null,
+    "envelope_id": null,
+    "envelope": null
   }
 }
 ```
@@ -554,7 +680,8 @@ Request JSON:
       "step": 1,
       "email": "signer@example.com",
       "name": "Signatário de exemplo",
-      "whatsapp_phone_number": "+5548999990000"
+      "whatsapp_phone_number": "+5548999990000",
+      "embedded": false
     }
   ],
   "editor_fields": [
@@ -568,7 +695,8 @@ Request JSON:
   "expires_at": "2099-01-01T12:00:00Z",
   "tags": [
     "EXAMPLE"
-  ]
+  ],
+  "max_total_credits": 1.5
 }
 ```
 
@@ -595,7 +723,8 @@ Response HTTP:
     "tags": [
       {
         "id": "RESOURCE_ID",
-        "name": "EXAMPLE"
+        "name": "EXAMPLE",
+        "color": null
       }
     ],
     "assignment": null,
@@ -624,7 +753,8 @@ Request JSON:
       "notification_methods": [
         "Email"
       ],
-      "step": 1
+      "step": 1,
+      "embedded": false
     }
   ],
   "entries": [
@@ -651,7 +781,8 @@ Request JSON:
   "expires_at": "2099-01-01T12:00:00Z",
   "copy_receivers": [
     "COPY_RECEIVER_ID"
-  ]
+  ],
+  "max_total_credits": 1.5
 }
 ```
 
@@ -770,7 +901,8 @@ Response HTTP:
     "signing_urls": [
       {
         "signer_id": "SIGNER_ID",
-        "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com"
+        "url": "https://app.assinafy.com.br/sign/DOCUMENT_ID?email=signer%40example.com",
+        "embedded": false
       }
     ],
     "document_id": "DOCUMENT_ID",
@@ -828,7 +960,7 @@ A lista de endpoints retorna o mesmo modelo sem secret em `data: [...]`, sem bod
 
 ## Payloads de workspace, consultas e listas
 
-`workspace()` e `accountPath()` usam a consulta abaixo, sem request body. `get()`, `list()` e `envelope('GET', ...)` podem executar a mesma consulta. `list()` percorre os headers `X-Pagination-Page-Count` e deduplica IDs; `workspace()` retorna somente o objeto do ID selecionado.
+`workspace()` e `accountPath()` usam a consulta abaixo, sem request body. `get()`, `list()` e `envelope('GET', ...)` podem executar a mesma consulta. `list()` percorre os headers de paginação e recusa páginas sobrepostas ou com número inconsistente; `workspace()` retorna somente o objeto do ID selecionado.
 
 ```http
 GET /v1/accounts?page=1&per-page=50 HTTP/1.1
@@ -873,7 +1005,7 @@ As listas `documents` e `signers` retornam `data: [...]` contendo os modelos com
 | `fields` | GET `/accounts/ACCOUNT_ID/fields?include_standard=1` | Field abaixo |
 | `template_roles` | GET de templates; selecionar TEMPLATE_ID | Template.roles, excluindo Editor |
 | `editor_fields` | GET de templates; selecionar TEMPLATE_ID | Template.pages[].fields dos papéis Editor, deduplicados por field_id |
-| `document_pages` | GET `/documents/DOCUMENT_ID?expand=assignment` | Document.pages, com verificação de workspace |
+| `document_pages` | GET `/documents/DOCUMENT_ID` | Document.pages, com verificação de workspace |
 
 Todas as variantes de `loadOptions()` retornam a mesma forma pública:
 
@@ -1015,7 +1147,8 @@ Se o serviço retornar `data: null`, `getSubscription()` retorna null. O catálo
   "message": "",
   "data": [
     {
-      "id": "document_ready"
+      "id": "document_ready",
+      "description": "Documento certificado após assinaturas e revisões exigidas."
     }
   ]
 }

@@ -25,9 +25,9 @@ test('bad signer inputs cause no API writes or reads', async () => {
 test('OAuth connections still require an explicit workspace', () => {
   assert.throws(() => new AssinafyClient({ type: 'oauth2', accessToken: 'secret' }), hasCode('INVALID_ID'));
 });
-test('Get Document requests expanded assignments and preserves all API output fields', async () => {
+test('Get Document includes its assignment without an undocumented expansion and preserves all API output fields', async () => {
   const expected = { ...readyDocument, tags: [{ id: 'tag1', name: 'Test' }], signing_url: 'https://example.com/sign', assignment: { id: 'assignment1' } };
-  const m = mock([workspaceStep(), { response: ok(expected), check(url) { assert.equal(url.searchParams.get('expand'), 'assignment'); } }]);
+  const m = mock([workspaceStep(), { response: ok(expected), check(url) { assert.equal(url.searchParams.has('expand'), false); } }]);
   assert.deepEqual(await runAction('get_document', client(m), { document_id: 'document1' }), expected); m.done();
 });
 test('Get Document rejects another workspace and does not follow supplied URLs', async () => {
@@ -118,4 +118,83 @@ test('local end-to-end action sequence creates a signer, sends a template and re
   await runAction('create_signer', c, { body: { full_name: 'Test Signer', email: 'signer@example.com' } });
   const sent = await runAction('create_document_from_template', c, { template_id: 'template1', body });
   assert.equal((await runAction('get_document', c, { document_id: sent.id })).status, 'certificated'); m.done();
+});
+
+test('document envelope expansions are encoded explicitly and preserve nullable relationships', async () => {
+  const expected = { ...readyDocument, envelope_id: null, envelope: null };
+  const m = mock([workspaceStep(), { response: ok(expected), check(url) { assert.equal(url.searchParams.get('expand'), 'envelope_id,envelope'); } }]);
+  assert.deepEqual(await runAction('get_document', client(m), { document_id: 'document1', expand: ['envelope_id', 'envelope'] }), expected); m.done();
+  const invalid = mock([]);
+  for (const expand of ['envelope', ['assignment'], [null]]) {
+    await assert.rejects(runAction('get_document', client(invalid), { document_id: 'document1', expand }), hasCode('INVALID_INPUT'));
+  }
+  invalid.done();
+});
+
+test('template idempotency keys and credit ceilings reach only the write and preserve its response', async () => {
+  const body = { signers: [{ id: 'signer1', role_id: 'customer' }], max_total_credits: 0 };
+  const expected = { ...readyDocument, status: 'uploaded', assignment: null };
+  const reads = [workspaceStep(), { response: ok([{ ...template, pages: [] }]) }, { response: ok([signer]) }];
+  for (const step of reads) step.check = (_, init) => assert.equal(init.headers['Idempotency-Key'], undefined);
+  const m = mock([...reads, { response: ok(expected), check(_, init) {
+    assert.equal(init.headers['Idempotency-Key'], 'create-document-once');
+    assert.deepEqual(JSON.parse(init.body), body);
+  } }]);
+  assert.deepEqual(await runAction('create_document_from_template', client(m), { template_id: 'template1', body, idempotency_key: 'create-document-once' }), expected);
+  m.done();
+});
+
+test('invalid ceilings and misplaced or unsafe idempotency keys fail before HTTP', async () => {
+  const m = mock([]);
+  for (const max_total_credits of [-1, Infinity, NaN, '1', null]) {
+    await assert.rejects(runAction('request_signatures', client(m), { document_id: 'document1', body: { method: 'virtual', signers: [{ id: 'signer1' }], max_total_credits } }), hasCode('INVALID_INPUT'));
+  }
+  for (const idempotency_key of ['', ' key', 'key ', 'key\r\nAuthorization: secret', 123]) {
+    await assert.rejects(runAction('create_document_from_template', client(m), { template_id: 'template1', body: { signers: [] }, idempotency_key }), hasCode('INVALID_INPUT'));
+  }
+  await assert.rejects(runAction('create_signer', client(m), { body: { full_name: 'Example' }, idempotency_key: 'key' }), hasCode('INVALID_INPUT'));
+  await assert.rejects(client(m).post('/documents', {}, 'key'), hasCode('INVALID_INPUT'));
+  await assert.rejects(client(m).envelope('GET', '/accounts/workspace1/templates/template1/documents', { idempotencyKey: 'key' }), hasCode('INVALID_INPUT'));
+  m.done();
+});
+
+test('an idempotency key does not trigger automatic replay after an uncertain template write', async () => {
+  const m = mock([workspaceStep(), { response: ok([{ ...template, pages: [] }]) }, { response: ok([signer]) }, { error: new Error('timeout') }]);
+  await assert.rejects(runAction('create_document_from_template', client(m), { template_id: 'template1', body: { signers: [{ id: 'signer1', role_id: 'customer' }] }, idempotency_key: 'once' }), error => error.outcomeUnknown && !error.safeToRetry);
+  m.done();
+});
+
+test('embedded backend flow keeps single-use session responses intact and confirms completion by document read', async () => {
+  const origin = { id: 'origin1', origin: 'https://app.example.com', created_at: '2026-11-11T12:00:00Z' };
+  const session = { url: 'https://app.assinafy.com.br/embed/single-use-token', expires_at: '2026-11-11T12:05:00Z' };
+  const body = { method: 'virtual', signers: [{ id: signer.id, verification_method: 'Email', embedded: true }], max_total_credits: 0 };
+  const assignment = { id: 'assignment1', signing_urls: [{ signer_id: signer.id, embedded: true, url: null }] };
+  const m = mock([workspaceStep(),
+    { response: ok(origin), check: jsonCheck('/accounts/workspace1/embed-origins', { origin: origin.origin }) },
+    { response: ok(readyDocument) }, { response: ok([signer]) },
+    { response: ok(assignment), check: jsonCheck('/documents/document1/assignments', body) },
+    { response: ok(session), check(url, init) {
+      assert.equal(url.pathname, '/v1/documents/document1/assignments/assignment1/signers/signer1/embed-sessions');
+      assert.equal(init.method, 'POST'); assert.equal(init.body, undefined);
+    } },
+    { response: ok({ ...readyDocument, status: 'certificated', assignment }) },
+    { response: ok([]), check(url, init) { assert.equal(init.method, 'DELETE'); assert.equal(url.pathname, '/v1/accounts/workspace1/embed-origins/origin1'); } },
+  ]);
+  const c = client(m);
+  await c.post(await c.accountPath('/embed-origins'), { origin: origin.origin });
+  assert.deepEqual(await runAction('request_signatures', c, { document_id: readyDocument.id, body }), assignment);
+  assert.deepEqual((await c.envelope('POST', '/documents/document1/assignments/assignment1/signers/signer1/embed-sessions')).data, session);
+  assert.equal((await runAction('get_document', c, { document_id: readyDocument.id })).status, 'certificated');
+  assert.deepEqual((await c.envelope('DELETE', await c.accountPath('/embed-origins/origin1'))).data, []); m.done();
+});
+
+test('a credit-ceiling rejection is surfaced without retrying the invitation', async () => {
+  const body = { method: 'virtual', signers: [{ id: 'signer1' }], max_total_credits: 0 };
+  const m = mock([workspaceStep(), { response: ok(readyDocument) }, { response: ok([signer]) },
+    { response: new Response(JSON.stringify({ code: 'CreditCeilingExceeded', private_data: 'not-for-logs' }), { status: 409 }),
+      check: jsonCheck('/documents/document1/assignments', body) }]);
+  await assert.rejects(runAction('request_signatures', client(m), { document_id: readyDocument.id, body }), error => {
+    assert.equal(error.httpStatus, 409); assert.equal(error.safeToRetry, false); assert.equal(error.outcomeUnknown, false);
+    assert.equal(error.message.includes('not-for-logs'), false); return true;
+  }); m.done();
 });

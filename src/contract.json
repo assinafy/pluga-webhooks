@@ -1,6 +1,6 @@
 {
   "source": "https://api.assinafy.com.br/v1/docs/openapi.json",
-  "retrieved": "2026-10-28",
+  "retrieved": "2026-11-11",
   "actions": {
     "create_signer": {
       "name": "Create Signer",
@@ -18,7 +18,7 @@
           "email": {
             "type": "string",
             "format": "email",
-            "example": "contact@example.com"
+            "example": "signer@example.com"
           },
           "whatsapp_phone_number": {
             "description": "E.164; normalized on save.",
@@ -104,6 +104,24 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "expand",
+          "in": "query",
+          "description": "`envelope_id` adds the id of the envelope the document was sent in, `envelope` its id and name; each is `null` for a document sent on its own. Send both separated by a comma. Read by the workspace only; without it the document reads as it always has.",
+          "required": false,
+          "style": "form",
+          "explode": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "envelope_id",
+                "envelope"
+              ]
+            }
+          }
         }
       ],
       "security": [
@@ -112,6 +130,9 @@
         },
         {
           "apiKeyAuth": []
+        },
+        {
+          "signerAccessCode": []
         }
       ]
     },
@@ -145,7 +166,7 @@
                 "email": {
                   "description": "Used when `id` is not sent: the account's signer with this email is reused, or a new one is created with `name`.",
                   "type": "string",
-                  "example": "contact@example.com"
+                  "example": "signer@example.com"
                 },
                 "name": {
                   "description": "Full name for a signer created from `email`.",
@@ -177,6 +198,11 @@
                   "example": [
                     "Email"
                   ]
+                },
+                "embedded": {
+                  "description": "Mark this signer as embedded: they sign inside an iframe in your application through a short-lived embed session, and your backend gets no signing link for them (`signing_urls` returns `url: null, embedded: true`). They still receive the normal invitation with their code, and can also sign from it. Requires the Embed plan feature (`403 PlanRestricted` otherwise) and works with Email or Whatsapp verification. Defaults to `false`.",
+                  "type": "boolean",
+                  "example": false
                 },
                 "step": {
                   "description": "Positive integer that controls signing order. Signers sharing the same step sign in parallel; a step activates only after every signer in the previous step has signed. If supplied for any role it must be supplied for all, forming a contiguous sequence starting at 1. Copy receivers ignore this field.",
@@ -232,6 +258,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "max_total_credits": {
+            "description": "Optional ceiling on what this request may spend: refused with `409` and code `CreditCeilingExceeded`, nothing charged, when its `total_credits` is above this. Send the `total_credits` of the last estimate. A value that is not a number of credits, zero or more, answers `400`; numeric text counts, as a form-encoded body sends it. If the cost rises after the request is accepted, as when the plan's documents run out, nothing is charged, the document ends `failed` and `document_processing_failed` carries the reason in `error_message`.",
+            "type": "number",
+            "example": 1.5
           }
         },
         "type": "object"
@@ -270,6 +301,16 @@
           "required": true,
           "schema": {
             "type": "string"
+          }
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "description": "Any text, case-sensitive and new for each document you mean to create (a UUID, say). Retrying with the same key after a lost response answers the document the first request created, as the first response would, and creates and charges nothing, whatever the body says. A key belongs to its template and doesn't expire, so a `failed` document keeps answering it. `404` if that document was deleted; `409` with code `IdempotencyKeyInUse` if the first request is still running: try again. A request refused before its job is queued leaves its key free.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         }
       ],
@@ -337,6 +378,11 @@
                     "Email"
                   ]
                 },
+                "embedded": {
+                  "description": "Mark this signer as embedded: they sign inside an iframe in your application through a short-lived embed session, and your backend gets no signing link for them (`signing_urls` returns `url: null, embedded: true`). They still receive the normal invitation with their code, and can also sign from it. Requires the Embed plan feature (`403 PlanRestricted` otherwise) and works with Email or Whatsapp verification. Defaults to `false`.",
+                  "type": "boolean",
+                  "example": false
+                },
                 "step": {
                   "type": "integer",
                   "example": 1
@@ -389,6 +435,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "max_total_credits": {
+            "description": "Optional ceiling on what this request may spend: refused with `409` and code `CreditCeilingExceeded`, nothing charged, when its `total_credits` is above this. Send the `total_credits` of the last estimate. A value that is not a number of credits, zero or more, answers `400`; numeric text counts, as a form-encoded body sends it.",
+            "type": "number",
+            "example": 1.5
           }
         },
         "type": "object"
@@ -470,7 +521,7 @@
             "null"
           ],
           "format": "email",
-          "example": "contact@example.com"
+          "example": "signer@example.com"
         },
         "whatsapp_phone_number": {
           "description": "E.164 format; normalized on save.",
@@ -681,6 +732,14 @@
               },
               "name": {
                 "type": "string"
+              },
+              "color": {
+                "description": "6-char hex without leading #.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "example": "ff8800"
               }
             },
             "type": "object"
@@ -703,6 +762,35 @@
           "items": {
             "$ref": "#/components/schemas/DocumentPage"
           }
+        },
+        "envelope_id": {
+          "description": "Only on `GET /v1/documents/{documentId}?expand=envelope_id` read by the workspace, not in document lists or webhooks, so their payloads keep their shape: the envelope this document is in, or `null` for a document sent on its own, taken out of its envelope, or whose envelope was deleted.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": null
+        },
+        "envelope": {
+          "description": "Only on `GET /v1/documents/{documentId}?expand=envelope` read by the workspace and `GET /v1/sign?expand=envelope` or `GET /v1/signers/{signerId}/document?expand=envelope` read with the signer's code, not in document lists or webhooks: the envelope this document is in, or `null` for a document sent on its own, taken out of its envelope, or whose envelope was deleted. The signer's reads name the envelope their code belongs to even when the code's own document was taken out, since the code still reaches the rest.",
+          "required": [
+            "id",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "example": "fe1c140cb49b79f940aab95fddd"
+            },
+            "name": {
+              "type": "string",
+              "example": "Contrato de prestação de serviços"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
         },
         "has_contract": {
           "description": "Only on `GET /v1/documents/{documentId}` read by the workspace, while the environment has contract tracking on: not with a signer's access code, not in document lists or webhooks, and left out when the lookup fails, so a missing key means unknown. Whether `GET /v1/accounts/{accountId}/documents/{documentId}/contract` answers with contract terms, the document's own or those of a contract it amends whose document still exists, so a page can lay out the contract section before reading it.",
@@ -783,6 +871,44 @@
           },
           "type": "object"
         },
+        "signing_features": {
+          "description": "Only with `?expand=signing_features` on `GET /v1/accounts/{accountId}`: which signing features the workspace's subscription includes now (its plan's and any granted to it), so a client offers only the identity checks and notices it can use. `DigitalCertificate` and `VerificationIdDocumentFaceMatchBasic` gate the `DigitalCertificate` and `IdDocumentFaceMatchBasic` verification methods, `WhatsappNotification` the `Whatsapp` notification method (and so the `Whatsapp` verification method), and `VerificationBypass` the `Bypass` verification method. `false` means creating an assignment, or a document from a template, with that method (or estimating its cost) answers `403`. `Embed` gates embedded signing: with `false`, the embed origins endpoints, `\"embedded\": true` on a signer and minting an embed session answer `403` with code `PlanRestricted`. `true` is not a promise: credits, the assignment's own rules (a `DigitalCertificate` signer needs a `virtual` assignment) and a change of plan still apply. Requires the `account:read` OAuth scope.",
+          "required": [
+            "DigitalCertificate",
+            "VerificationIdDocumentFaceMatchBasic",
+            "WhatsappNotification",
+            "VerificationBypass",
+            "Embed"
+          ],
+          "properties": {
+            "DigitalCertificate": {
+              "description": "Signing with the signer's own ICP-Brasil certificate.",
+              "type": "boolean",
+              "example": true
+            },
+            "VerificationIdDocumentFaceMatchBasic": {
+              "description": "Identity check by ID document and face match.",
+              "type": "boolean",
+              "example": false
+            },
+            "WhatsappNotification": {
+              "description": "Sending signature requests by WhatsApp.",
+              "type": "boolean",
+              "example": true
+            },
+            "VerificationBypass": {
+              "description": "Signing without a verification code (the `Bypass` verification method).",
+              "type": "boolean",
+              "example": false
+            },
+            "Embed": {
+              "description": "Embedded signing: the signing screen inside your own app (see **Embedded Signing Guide**).",
+              "type": "boolean",
+              "example": false
+            }
+          },
+          "type": "object"
+        },
         "created_at": {
           "type": "string",
           "format": "date-time",
@@ -838,9 +964,29 @@
       "type": "object"
     },
     "DocumentContract": {
-      "description": "The contract terms tracked on a document.",
+      "description": "The contract terms tracked on a document. Every key below is always present, `null` when it holds no value, except `resource`, `document` and `amendments`, which depend on the response.",
+      "required": [
+        "document_id",
+        "status",
+        "counterparty_name",
+        "counterparty_taxpayer_id",
+        "value",
+        "currency",
+        "start_date",
+        "end_date",
+        "auto_renew",
+        "renewal_term_months",
+        "notice_period_days",
+        "term",
+        "owner_id",
+        "metadata",
+        "external_references",
+        "created_at",
+        "updated_at"
+      ],
       "properties": {
         "resource": {
+          "description": "On a response that is this contract alone; list items carry none.",
           "type": "string",
           "example": "document_contract"
         },
@@ -937,7 +1083,7 @@
           "example": "d6zqpbyog2v3xvxerwn8la94"
         },
         "metadata": {
-          "description": "Up to 50 keys of your own, each holding text of at most 500 characters; `null` when there are none. A key ending in `_at` cannot hold a number: the API returns numbers under such keys as dates.",
+          "description": "Up to 50 keys of your own, each holding text of at most 500 characters; `null` when there are none. Values come back exactly as sent. A key ending in `_at`, or `stuck_since`, cannot hold a number.",
           "type": [
             "object",
             "null"
@@ -950,9 +1096,13 @@
           }
         },
         "external_references": {
-          "description": "IDs outside systems use for this contract, ordered by system and id.",
+          "description": "IDs outside systems use for this contract, ordered by system and id; `[]` when there are none.",
           "type": "array",
           "items": {
+            "required": [
+              "system",
+              "id"
+            ],
             "properties": {
               "system": {
                 "type": "string",
@@ -971,7 +1121,7 @@
           "description": "Only with `expand=document`: the document the terms are tracked on."
         },
         "amendments": {
-          "description": "Only on the single-contract read: the documents that amend, renew or terminate this contract, the applied ones first by `number`, then the pending ones.",
+          "description": "Only on the contract read and the related read (`GET …/contract`, `GET …/contract/related`), never on the list or on the answer to a write, renewal or termination: the documents that amend, renew or terminate this contract, the applied ones first by `number`, then the pending ones.",
           "type": "array",
           "items": {
             "$ref": "#/components/schemas/DocumentContractAmendment"
@@ -1147,9 +1297,26 @@
       "type": "object"
     },
     "DocumentContractAmendment": {
-      "description": "A document that amends, renews or terminates a contract: its link and the terms it changes. The parent's terms take the delta once this document is certificated; until then the parent is untouched.",
+      "description": "A document that amends, renews or terminates a contract: its link and the terms it changes. The parent's terms take the delta once this document is certificated; until then the parent is untouched. Every key below is always present, `null` when it holds no value, except `resource`.",
+      "required": [
+        "document_id",
+        "document_name",
+        "parent_document_id",
+        "relation_type",
+        "number",
+        "status",
+        "document_status",
+        "apply_error",
+        "currency",
+        "terms",
+        "changes",
+        "applied_at",
+        "created_at",
+        "updated_at"
+      ],
       "properties": {
         "resource": {
+          "description": "On a response that is this amendment alone; the entries of a contract's `amendments` carry none.",
           "type": "string",
           "example": "document_contract_amendment"
         },
@@ -1267,13 +1434,23 @@
       "type": "object"
     },
     "SigningUrl": {
+      "description": "One entry per signer whose turn has come. The link depends on how the signer gets the invitation: with `Email` it is a page that does not open the document by itself, where the signer asks for their invitation again by e-mail; with `Whatsapp` only it is `null` (the signer has their link in the WhatsApp message). An embedded signer (`embedded: true`) never gets a link: `url` is `null` and the integrator mints an embed session for them instead.",
       "properties": {
         "signer_id": {
           "type": "string"
         },
         "url": {
-          "type": "string",
-          "example": "https://api.assinafy.com.br/v1/sign/doc1?email=contact@example.com"
+          "description": "See the schema description. `null` for a signer notified only by WhatsApp and for an embedded signer.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.com"
+        },
+        "embedded": {
+          "description": "Whether the signer was marked `embedded` when the assignment was created.",
+          "type": "boolean",
+          "example": false
         }
       },
       "type": "object"
@@ -1366,24 +1543,42 @@
           "example": "signature_request"
         },
         "status": {
+          "description": "Furthest delivery stage reached. `opened` means the email was opened/clicked or the WhatsApp message was read.",
           "type": "string",
           "enum": [
             "sent",
+            "delivered",
+            "opened",
             "failed"
           ],
-          "example": "sent"
+          "example": "failed"
         },
         "error_code": {
+          "description": "Why the notification failed. Only set when `status` is `failed`.",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "enum": [
+            "MailboxFull",
+            "AddressNotFound",
+            "AddressSuppressed",
+            "ContentRejected",
+            "MarkedAsSpam",
+            "NotOnWhatsapp",
+            "RecipientRestricted",
+            "NotSent",
+            "Unknown"
+          ],
+          "example": "MailboxFull"
         },
         "error_message": {
+          "description": "Human-readable, localized explanation of `error_code`. Only set when `status` is `failed`.",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "example": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail."
         },
         "sent_at": {
           "type": [
@@ -1399,7 +1594,7 @@
             "null"
           ],
           "format": "date-time",
-          "example": null
+          "example": "2026-07-07T12:05:00Z"
         }
       },
       "type": "object"
@@ -1490,7 +1685,7 @@
             "null"
           ],
           "format": "email",
-          "example": "contact@example.com"
+          "example": "sender@example.com"
         },
         "method": {
           "type": "string",
@@ -1571,9 +1766,22 @@
     },
     "CostEstimate": {
       "description": "Cost breakdown for an assignment plus current account balances. `credits` is the sum of `breakdown` (notifications, digital-certificate signatures and identity checks). `total_credits` is what the send will take from the credit balance: `credits`, plus `extra_document_cost` when `needs_extra_document` is true. The extra document is not a `breakdown` line.",
+      "required": [
+        "documents",
+        "credits",
+        "needs_extra_document",
+        "extra_document_cost",
+        "total_credits",
+        "breakdown",
+        "document_balance",
+        "credit_balance",
+        "has_sufficient_resources",
+        "blocking_reason",
+        "message"
+      ],
       "properties": {
         "documents": {
-          "description": "Documents consumed (always 1).",
+          "description": "Documents consumed: 1, for an assignment as for an envelope, whatever its documents.",
           "type": "integer",
           "example": 1
         },
@@ -1604,16 +1812,23 @@
           }
         },
         "document_balance": {
-          "description": "Documents left in the plan.",
-          "type": "number",
+          "description": "Documents left in the plan. `null` when the account's documents are not limited.",
+          "type": [
+            "number",
+            "null"
+          ],
           "example": 0
         },
         "credit_balance": {
-          "description": "Credits available.",
-          "type": "number",
+          "description": "Credits available. `null` when the account's credits are not limited.",
+          "type": [
+            "number",
+            "null"
+          ],
           "example": 10
         },
         "has_sufficient_resources": {
+          "description": "Whether creating it would pass its balance checks now: the checks creation itself makes, so a contract that allows overage passes with a low `document_balance` or `credit_balance`.",
           "type": "boolean",
           "example": true
         },
@@ -1851,7 +2066,7 @@
             "string",
             "null"
           ],
-          "example": "contact@example.com"
+          "example": "signer@example.com"
         },
         "updated_at": {
           "type": [
@@ -1895,7 +2110,7 @@
           "description": "Contact email for delivery-failure notices.",
           "type": "string",
           "format": "email",
-          "example": "contact@example.com"
+          "example": "ops@example.com"
         },
         "events": {
           "description": "Event types delivered to this endpoint (see **List webhook event types**).",
@@ -2023,7 +2238,7 @@
           "example": 2
         },
         "kind": {
-          "description": "`scheduled`: the delivery of the event as it happened; `probe`: the one delivery we send to a paused endpoint to see whether it answers; `manual`: asked for through **Retry webhook delivery**.",
+          "description": "`scheduled`: the delivery of the event as it happened; `probe`: the one delivery we send to a paused endpoint to see whether it answers; `manual`: asked for through **Retry webhook delivery** or **Send a test delivery**.",
           "type": "string",
           "enum": [
             "scheduled",
@@ -2036,6 +2251,14 @@
           "description": "Whether another attempt follows this one. `false` on a delivered entry and on the last attempt of a failed one.",
           "type": "boolean",
           "example": true
+        },
+        "duration_ms": {
+          "description": "How long the endpoint took to answer or fail, in milliseconds. `null` when no request was sent (a host that does not resolve, an address that is not public) and on entries recorded before it was measured.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "example": 184
         },
         "http_status": {
           "description": "HTTP status returned (null if connection failed).",
@@ -2107,9 +2330,10 @@
           "example": "Assignment created by John Smith."
         },
         "payload": {
-          "description": "Event-specific snapshot taken when the event happened, with the same keys as the webhook of that event (see **Webhook Payloads**). The common ones: `user_name` (`assignment_created`, `user_rejected_document`); `signer_full_name` (every `signer_*` event and `signature_requested`); `signer_email`, `signer_whatsapp_phone_number` and `notification_method` (`signature_requested`); `reviewer_name` (identity review decisions); `error_message` (`document_processing_failed`). `message` already carries the actor's name, translated, so clients can show it as is. A `*_at` key inside the payload is returned as an ISO 8601 string here, as in every API response, but as a Unix integer in webhook bodies.",
+          "description": "`[]` for the events that record nothing (`document_uploaded`, `document_metadata_ready`, `document_prepared`). Otherwise an event-specific snapshot taken when the event happened, with the same keys as the webhook of that event (see **Webhook Payloads**). The common ones: `user_name` (`assignment_created`, `user_rejected_document`); `signer_full_name` (every `signer_*` event and `signature_requested`); `signer_email`, `signer_whatsapp_phone_number` and `notification_method` (`signature_requested`); `reviewer_name` (identity review decisions); `error_message` (`document_processing_failed`). `message` already carries the actor's name, translated, so clients can show it as is. A `*_at` key inside the payload is returned as an ISO 8601 string here, as in every API response, but as a Unix integer in webhook bodies.",
           "type": [
             "object",
+            "array",
             "null"
           ]
         },
@@ -2117,7 +2341,11 @@
           "description": "Request origin when available.",
           "properties": {
             "ip": {
-              "type": "string",
+              "description": "`null` when the request carried no client address.",
+              "type": [
+                "string",
+                "null"
+              ],
               "example": "172.19.0.1"
             },
             "user-agent": {
@@ -2468,6 +2696,43 @@
         }
       },
       "type": "object"
+    },
+    "EmbedOrigin": {
+      "description": "An origin allowed to embed the workspace's signing pages.",
+      "properties": {
+        "id": {
+          "description": "Embed origin ID.",
+          "type": "string",
+          "example": "6f1c2a9e0b"
+        },
+        "origin": {
+          "description": "Exact `scheme://host[:port]`.",
+          "type": "string",
+          "example": "https://app.example.com"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-11-04T12:05:00Z"
+        }
+      },
+      "type": "object"
+    },
+    "EmbedSession": {
+      "description": "A single-use embed session for an embedded signer.",
+      "properties": {
+        "url": {
+          "description": "Load this URL in an iframe within 5 minutes. Opening it spends the token.",
+          "type": "string",
+          "example": "https://app.assinafy.com.br/embed/3f2c9a1e5b7d4c68a0e1f2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-11-04T12:05:00Z"
+        }
+      },
+      "type": "object"
     }
   },
   "webhookSubscriptionInput": {
@@ -2504,7 +2769,7 @@
         "description": "Email that receives important webhook-communication notices.",
         "type": "string",
         "format": "email",
-        "example": "contact@example.com"
+        "example": "signer@example.com"
       }
     },
     "type": "object"
@@ -2526,7 +2791,7 @@
         "description": "Contact email for delivery-failure notices.",
         "type": "string",
         "format": "email",
-        "example": "contact@example.com"
+        "example": "ops@example.com"
       },
       "events": {
         "description": "Event types to deliver (see `GET /v1/webhooks/event-types`).",
@@ -2567,7 +2832,7 @@
       "email": {
         "type": "string",
         "format": "email",
-        "example": "contact@example.com"
+        "example": "ops@example.com"
       },
       "events": {
         "type": "array",
@@ -2747,6 +3012,14 @@
           }
         },
         {
+          "name": "envelope_id",
+          "in": "query",
+          "description": "Only the members of this envelope. Anything but text answers `400`.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "method",
           "in": "query",
           "description": "Signature method filter.",
@@ -2796,10 +3069,12 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Records per page (max 100).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "maximum": 100,
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
             "example": 25
           }
         }
@@ -2927,6 +3202,9 @@
         },
         {
           "apiKeyAuth": []
+        },
+        {
+          "signerAccessCode": []
         }
       ]
     },
@@ -3229,10 +3507,12 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Records per page (max 100).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "maximum": 100,
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
             "example": 25
           }
         }
@@ -3265,7 +3545,7 @@
                 "email": {
                   "type": "string",
                   "format": "email",
-                  "example": "contact@example.com"
+                  "example": "signer@example.com"
                 },
                 "whatsapp_phone_number": {
                   "description": "E.164; normalized on save.",
@@ -3387,10 +3667,12 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Records per page (max 100).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "maximum": 100,
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
             "example": 25
           }
         }
@@ -3492,7 +3774,7 @@
                   "description": "Email that receives important webhook-communication notices.",
                   "type": "string",
                   "format": "email",
-                  "example": "contact@example.com"
+                  "example": "signer@example.com"
                 }
               },
               "type": "object"
@@ -3771,7 +4053,7 @@
                   "description": "Contact email for delivery-failure notices.",
                   "type": "string",
                   "format": "email",
-                  "example": "contact@example.com"
+                  "example": "ops@example.com"
                 },
                 "events": {
                   "description": "Event types to deliver (see `GET /v1/webhooks/event-types`).",
@@ -3936,7 +4218,7 @@
                 "email": {
                   "type": "string",
                   "format": "email",
-                  "example": "contact@example.com"
+                  "example": "ops@example.com"
                 },
                 "events": {
                   "type": "array",
@@ -4149,7 +4431,23 @@
     {
       "method": "POST",
       "path": "/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate",
-      "requestBody": null,
+      "requestBody": {
+        "required": false,
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "keep_previous": {
+                  "description": "`true`: the replaced secret keeps signing for 24 hours. Default `false`: it stops at once.",
+                  "type": "boolean",
+                  "example": false
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
       "response": {
         "description": "The new secret",
         "content": {
@@ -4163,7 +4461,23 @@
                 {
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/WebhookEndpointSecret"
+                      "type": "object",
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/WebhookEndpointSecret"
+                        },
+                        {
+                          "properties": {
+                            "previous_secret_expires_at": {
+                              "description": "Only with `keep_previous: true`: until when the secret replaced keeps signing deliveries beside this one.",
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-10-30T15:00:00Z"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      ]
                     }
                   },
                   "type": "object"
@@ -4298,10 +4612,13 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Items per page (default: 20).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "default": 20
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "example": 25
           }
         }
       ],
@@ -4536,10 +4853,12 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Records per page (max 100).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "maximum": 100,
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
             "example": 25
           }
         }
@@ -4818,10 +5137,12 @@
         {
           "name": "per-page",
           "in": "query",
-          "description": "Records per page (max 100).",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
           "schema": {
             "type": "integer",
-            "maximum": 100,
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
             "example": 25
           }
         }
@@ -4852,6 +5173,9 @@
                 {
                   "properties": {
                     "data": {
+                      "required": [
+                        "resource"
+                      ],
                       "oneOf": [
                         {
                           "$ref": "#/components/schemas/DocumentContract"
@@ -4946,6 +5270,9 @@
                 {
                   "properties": {
                     "data": {
+                      "required": [
+                        "resource"
+                      ],
                       "oneOf": [
                         {
                           "$ref": "#/components/schemas/DocumentContract"
@@ -5020,7 +5347,14 @@
                 {
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/DocumentContract"
+                      "required": [
+                        "resource"
+                      ],
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/DocumentContract"
+                        }
+                      ]
                     }
                   },
                   "type": "object"
@@ -5052,6 +5386,17 @@
           "required": true,
           "schema": {
             "type": "string"
+          }
+        },
+        {
+          "name": "expand",
+          "in": "query",
+          "description": "`document` embeds the root contract's document, its `name` included, so an amendment's page names its parent without a second read; each entry of `amendments` already carries its own `document_name`. Without it the answer is as before.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "document"
+            ]
           }
         }
       ],
@@ -5127,7 +5472,14 @@
                 {
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/DocumentContract"
+                      "required": [
+                        "resource"
+                      ],
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/DocumentContract"
+                        }
+                      ]
                     }
                   },
                   "type": "object"
@@ -5218,7 +5570,14 @@
                 {
                   "properties": {
                     "data": {
-                      "$ref": "#/components/schemas/DocumentContract"
+                      "required": [
+                        "resource"
+                      ],
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/DocumentContract"
+                        }
+                      ]
                     }
                   },
                   "type": "object"
@@ -5326,6 +5685,14 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "artifact",
+          "in": "query",
+          "description": "`certificated`: the page, or the thumbnail, as it is in the signed document, with its signatures and stamps. Only for a certificated document, and only for the workspace's members and apps: `404` when the document isn't certificated or the caller uses a signer's access code. The first request for a page renders it with the pages around it, ten at a time, so it takes longer than the next ones; a request that finds the document's pages being rendered waits up to 30 seconds, then answers `503` with `Retry-After` if they still aren't ready; it answers `503` at once when the API is already rendering as many pages as it allows. Sent with `Cache-Control: no-store`. The certificate pages at the end of the signed file have no page ID and no render, and the visible seal of a document signed with a digital certificate is only in its `pades` file. Any other value is ignored.",
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "security": [
@@ -5334,6 +5701,9 @@
         },
         {
           "apiKeyAuth": []
+        },
+        {
+          "signerAccessCode": []
         }
       ]
     },
@@ -5444,6 +5814,373 @@
           "apiKeyAuth": []
         }
       ]
+    },
+    {
+      "path": "/accounts/{accountId}",
+      "method": "GET",
+      "requestBody": null,
+      "response": {
+        "description": "The account",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Account"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "expand",
+          "in": "query",
+          "description": "`signing_features`: add which signing features the workspace can use.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "path": "/accounts/{accountId}/embed-origins",
+      "method": "GET",
+      "requestBody": null,
+      "response": {
+        "description": "The allowed origins",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EmbedOrigin"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "path": "/accounts/{accountId}/embed-origins",
+      "method": "POST",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "origin"
+              ],
+              "properties": {
+                "origin": {
+                  "type": "string",
+                  "example": "https://app.example.com"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The origin added",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EmbedOrigin"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "path": "/accounts/{accountId}/embed-origins/{originId}",
+      "method": "PUT",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "required": [
+                "origin"
+              ],
+              "properties": {
+                "origin": {
+                  "type": "string",
+                  "example": "https://app.example.com"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The updated origin",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EmbedOrigin"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "originId",
+          "in": "path",
+          "description": "The embed origin ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "path": "/accounts/{accountId}/embed-origins/{originId}",
+      "method": "DELETE",
+      "requestBody": null,
+      "response": {
+        "description": "Origin removed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": [],
+                      "example": []
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "originId",
+          "in": "path",
+          "description": "The embed origin ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "path": "/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/embed-sessions",
+      "method": "POST",
+      "requestBody": null,
+      "response": {
+        "description": "The embed session",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EmbedSession"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "documentId",
+          "in": "path",
+          "description": "Document ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assignmentId",
+          "in": "path",
+          "description": "The assignment ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "signerId",
+          "in": "path",
+          "description": "The signer ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
     }
   ],
   "webhookEvents": [
@@ -5540,7 +6277,7 @@
             "documents:write": "Create, update and delete documents, and manage their signers, assignments and activity.",
             "templates:read": "Read reusable document templates, their pages, roles, fields and tags.",
             "templates:write": "Create, update and delete templates, their pages, roles, fields and tags.",
-            "account:read": "Read the workspace's profile, theme and logo.",
+            "account:read": "Read the workspace's profile, theme and logo, its document KPIs (stats), its webhook subscription and endpoints, and which signing features it can use.",
             "webhooks:write": "Change the workspace's webhook subscription (delivery URL, events, contact email), deactivate it, manage webhook endpoints and re-send a delivery.",
             "openid": "Identify the authenticated user (OpenID Connect `sub` claim) and enable the `/v1/oauth/userinfo` endpoint.",
             "profile": "Include the user's name in the `id_token`/userinfo claims.",

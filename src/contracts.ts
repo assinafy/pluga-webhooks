@@ -60,7 +60,7 @@ export interface DocumentContract extends Record<string, unknown> {
   updated_at: string;
 }
 export interface DocumentContractAmendment extends Record<string, unknown> {
-  resource: 'document_contract_amendment';
+  resource?: 'document_contract_amendment';
   document_id: string;
   document_name: string;
   parent_document_id: string;
@@ -106,8 +106,9 @@ export async function listContracts(client: AssinafyClient, filters: ContractFil
 export async function getContract(client: AssinafyClient, documentId: string): Promise<DocumentContract | DocumentContractAmendment> {
   return result(await client.get(await path(client, documentId)), documentId);
 }
-export async function getContractFamily(client: AssinafyClient, documentId: string): Promise<DocumentContract> {
-  const value = result(await client.get(`${await path(client, documentId)}/related`));
+export async function getContractFamily(client: AssinafyClient, documentId: string, options: { expand?: 'document' } = {}): Promise<DocumentContract> {
+  validate(options, { type: 'object', properties: { expand: { type: 'string', enum: ['document'] } } }, schemas);
+  const value = result(await client.get(`${await path(client, documentId)}/related`, options));
   invariant(value.resource === 'document_contract', 'INVALID_RESPONSE', 'Expected the root contract.');
   return value;
 }

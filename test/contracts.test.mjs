@@ -111,3 +111,13 @@ for (const event of ['document_contract_updated', 'document_contract_renewal_not
     assert.throws(() => normalizeEvent({ ...input, object: { type: 'Signer', id: 'signer1' } }, 'workspace1'), hasCode('INVALID_EVENT'));
   });
 }
+
+test('family expansion preserves the parent document and amendments without a resource discriminator', async () => {
+  const { resource, ...entry } = amendment;
+  const expected = { ...current, document: { id: current.document_id, name: 'Parent document' }, amendments: [entry] };
+  const m = mock([workspaceStep(), { response: ok(expected), check(url) { assert.equal(url.searchParams.get('expand'), 'document'); } }]);
+  assert.deepEqual(await getContractFamily(client(m), amendment.document_id, { expand: 'document' }), expected); m.done();
+  const invalid = mock([]);
+  for (const options of [{ expand: 'assignment' }, { extra: true }, null]) await assert.rejects(getContractFamily(client(invalid), 'document1', options), hasCode('INVALID_INPUT'));
+  invalid.done();
+});

@@ -144,7 +144,8 @@ export async function registerWebhookEndpoint(client: AssinafyClient, input: Web
     return current;
   }
   const result = endpoint(await client.post(await client.accountPath('/webhooks/endpoints'), input), true);
-  invariant(matches(result), 'INVALID_RESPONSE', 'The saved endpoint differs from the request; inspect it before continuing.', { outcomeUnknown: true });
+  invariant(matches(result) && (!result.signing_enabled || result.secret), 'INVALID_RESPONSE',
+    'The saved endpoint differs from the request or lacks its signing secret; inspect it before continuing.', { outcomeUnknown: true });
   return result;
 }
 export async function updateWebhookEndpoint(client: AssinafyClient, endpointId: string, input: Partial<WebhookEndpointInput>): Promise<WebhookEndpoint> {
@@ -161,11 +162,30 @@ export async function deleteWebhookEndpoint(client: AssinafyClient, endpointId: 
   invariant(Array.isArray(data) && data.length === 0, 'INVALID_RESPONSE', 'Unexpected endpoint deletion response.', { outcomeUnknown: true });
 }
 export async function getWebhookSecret(client: AssinafyClient, endpointId: string, rotate = false): Promise<string> {
-  const suffix = `/webhooks/endpoints/${id(endpointId, 'Endpoint ID')}/secret${rotate ? '/rotate' : ''}`;
-  const { data } = await client.envelope(rotate ? 'POST' : 'GET', await client.accountPath(suffix));
+  if (rotate) return (await rotateWebhookSecret(client, endpointId)).secret;
+  const suffix = `/webhooks/endpoints/${id(endpointId, 'Endpoint ID')}/secret`;
+  const { data } = await client.envelope('GET', await client.accountPath(suffix));
+  return webhookSecret(data).secret;
+}
+export interface WebhookSecret extends Record<string, unknown> {
+  secret: string;
+  previous_secret_expires_at?: string;
+}
+function webhookSecret(data: unknown, writing = false): WebhookSecret {
   invariant(record(data) && typeof data.secret === 'string' && SECRET_PATTERN.test(data.secret),
-    'INVALID_RESPONSE', 'Unexpected webhook signing secret.', { outcomeUnknown: rotate });
-  return data.secret;
+    'INVALID_RESPONSE', 'Unexpected webhook signing secret.', { outcomeUnknown: writing });
+  return data as WebhookSecret;
+}
+export async function rotateWebhookSecret(client: AssinafyClient, endpointId: string, input: { keep_previous?: boolean } = {}): Promise<WebhookSecret> {
+  id(endpointId, 'Endpoint ID');
+  const schema = contract.operations.find(row => row.path.endsWith('/secret/rotate') && row.method === 'POST')!.requestBody!.content['application/json']!.schema;
+  validate(input, schema as Schema, contract.schemas as Record<string, Schema>);
+  const { data } = await client.envelope('POST', await client.accountPath(`/webhooks/endpoints/${endpointId}/secret/rotate`), { json: input });
+  const result = webhookSecret(data, true);
+  invariant((result.previous_secret_expires_at === undefined && !input.keep_previous) ||
+    typeof result.previous_secret_expires_at === 'string' && Number.isFinite(Date.parse(result.previous_secret_expires_at)),
+    'INVALID_RESPONSE', 'Unexpected previous-secret expiration; inspect the endpoint before rotating again.', { outcomeUnknown: true });
+  return result;
 }
 
 /** Verify the unchanged UTF-8 body before parsing it or using any event fields. */

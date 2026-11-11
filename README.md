@@ -67,7 +67,7 @@ const signer = await runAction('create_signer', client, {
 
 ### 2. Prepare e envie o documento
 
-Para um modelo `ready`, mapeie cada papel Signer exatamente uma vez, CopyReceiver quando necessário e todos os campos Editor. A criação retorna `uploaded` com `assignment: null` e termina de processar em segundo plano.
+Para um modelo `ready`, mapeie cada papel Signer exatamente uma vez, CopyReceiver quando necessário e todos os campos Editor. A criação retorna `uploaded` com `assignment: null` e termina de processar em segundo plano. Use `idempotency_key` persistente por documento pretendido e `max_total_credits` da estimativa para limitar a cobrança.
 
 ```js
 const sent = await runAction('create_document_from_template', client, {
@@ -95,7 +95,7 @@ Depois, chame `request_signatures` com `method: "virtual"` ou `"collect"`. O cli
 | `DigitalCertificate` | `Email` ou `Whatsapp` | `virtual`, CPF/CNPJ, ICP-Brasil A1/A3 e um signatário por passo |
 | `IdDocumentFaceMatchBasic` | `Email` ou `Whatsapp` | CPF e recurso ID Document + Face Match |
 
-Use exatamente um canal em `notification_methods`. Certificado digital não funciona com `collect` nem com modelo que tenha campos Signer posicionados. Na biometria, a captura consentida ocorre na interface da Assinafy; não envie imagens no payload. `InReview` pode levar o documento a `pending_identity_review` até aprovação ou rejeição.
+Use exatamente um canal em `notification_methods`. Certificado digital não funciona com `collect` nem com modelo que tenha campos Signer posicionados. `embedded: true` aceita Email/Whatsapp e usa sessão curta em iframe, emitida pelo backend com API key. Na biometria, a captura consentida ocorre na interface da Assinafy; não envie imagens no payload. `InReview` pode levar o documento a `pending_identity_review` até aprovação ou rejeição.
 
 ### 4. Receba e autentique eventos
 
@@ -109,7 +109,7 @@ await verifyWebhookSignature(rawBody, request.headers, webhookSecret);
 const event = normalizeEvent(JSON.parse(rawBody), accountId, request.headers.get('webhook-id'));
 ```
 
-Verifique o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Reserve `event.deduplication_key` atomicamente antes de efeitos repetíveis; o helper não mantém armazenamento. Se a Pluga não expuser corpo e headers originais, verifique em um receptor próprio antes de encaminhar.
+Para trocar a chave com transição de 24 horas, use `rotateWebhookSecret(client, endpointId, { keep_previous: true })` e guarde o novo segredo. Verifique o corpo original e os headers `webhook-id`, `webhook-timestamp` e `webhook-signature`. Reserve `event.deduplication_key` atomicamente antes de efeitos repetíveis; o helper não mantém armazenamento. Se a Pluga não expuser corpo e headers originais, verifique em um receptor próprio antes de encaminhar.
 
 Eventos podem repetir e chegar fora de ordem. `document_ready` ocorre após certificação e revisões exigidas; `signer_signed_document` representa uma assinatura individual. Sempre confirme `object.id` por GET autenticado.
 

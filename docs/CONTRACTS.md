@@ -20,9 +20,9 @@ Importe de `dist/index.js`. Todas as funções retornam `data` inteiro, preserva
 
 | Função | Requisição | Retorno |
 |---|---|---|
-| `listContracts(client, filters?)` | GET `/accounts/ACCOUNT_ID/contracts`, todas as páginas | `DocumentContract[]`, deduplicado por `document_id` |
+| `listContracts(client, filters?)` | GET `/accounts/ACCOUNT_ID/contracts`, todas as páginas | `DocumentContract[]`, identificado por `document_id`; sobreposição de páginas é recusada |
 | `getContract(client, documentId)` | GET `/accounts/ACCOUNT_ID/documents/DOCUMENT_ID/contract` | `DocumentContract` ou `DocumentContractAmendment` |
-| `getContractFamily(client, documentId)` | GET no mesmo path com `/related` | Contrato raiz com `amendments`, consultável pelo pai ou pelo instrumento |
+| `getContractFamily(client, documentId, options?)` | GET no mesmo path com `/related` | Contrato raiz com `amendments`, consultável pelo pai ou pelo instrumento |
 | `updateContract(client, documentId, input)` | PUT no path `/contract` | Termos salvos ou vínculo de aditivo |
 | `renewContract(client, documentId, input)` | POST no path `/contract/renew` | Contrato no novo período |
 | `terminateContract(client, documentId, input?)` | POST no path `/contract/terminate` | Contrato com `status: terminated` |
@@ -49,6 +49,8 @@ const rows = await listContracts(client, {
 ```
 
 `listContracts` envia esses valores como query e controla `page`/`per-page=50` pelos headers de paginação. `data` na resposta HTTP é uma lista de contratos conforme o modelo abaixo; `expand=document` inclui o Document completo documentado em [API.md](API.md#get_document). Consultas individuais retornam um objeto com resource; itens de lista podem omitir resource, e o cliente preserva essa ausência. `getContract` e `getContractFamily` incluem `amendments` quando fornecido pelo serviço; a lista não precisa incluí-lo.
+
+`getContractFamily(client, documentId, { expand: 'document' })` acrescenta o documento raiz em `document`, incluindo name. O request GET não tem body; os termos completos abaixo incluem também Document quando expandido. Entradas de amendments omitem resource; a resposta individual do aditivo inclui `resource: document_contract_amendment`.
 
 ### Cadastro e edição dos termos
 

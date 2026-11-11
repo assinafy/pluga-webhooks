@@ -1,6 +1,6 @@
 {
   "name": "@assinafy/pluga-webhooks",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "description": "Assinafy document workflows, OAuth2 and signed webhooks for Pluga",
   "type": "module",

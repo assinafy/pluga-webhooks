@@ -58,6 +58,18 @@ test('contradictory repeated pages and page limits fail instead of returning par
     { response: ok([{ id: 'd2' }], { 'X-Pagination-Page-Count': '2' }) }]);
   await assert.rejects(new AssinafyClient(credentials, changing.runtime).list('/documents'), hasCode('PAGINATION_INCONSISTENT')); changing.done();
 });
+test('pagination rejects overlapping records and an incorrect reported current page', async () => {
+  for (const steps of [
+    [{ response: ok([{ id: 'd1' }, { id: 'd1' }]) }],
+    [{ response: ok([{ id: 'd1' }], { 'X-Pagination-Page-Count': '2' }) },
+      { response: ok([{ id: 'd1' }, { id: 'd2' }], { 'X-Pagination-Page-Count': '2' }) }],
+    [{ response: ok([{ id: 'd1' }], { 'X-Pagination-Current-Page': '2', 'X-Pagination-Page-Count': '2' }) }],
+  ]) {
+    const m = mock(steps);
+    await assert.rejects(new AssinafyClient(credentials, m.runtime).list('/documents'), hasCode('PAGINATION_INCONSISTENT'));
+    m.done();
+  }
+});
 test('rate-limit errors preserve delay but redact upstream bodies', async () => {
   const m = mock([{ response: new Response('test-secret person@example.com', { status: 429, headers: { 'Retry-After': '12' } }) }]);
   await assert.rejects(new AssinafyClient(credentials, m.runtime).get('/accounts'), error => {

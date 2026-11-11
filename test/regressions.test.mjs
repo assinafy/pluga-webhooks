@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { AssinafyClient, runAction, loadOptions, verifyWebhookSignature, normalizeEvent,
-  listWebhookEndpoints, registerWebhookEndpoint, updateWebhookEndpoint, deleteWebhookEndpoint, getWebhookSecret } from '../dist/index.js';
+  listWebhookEndpoints, registerWebhookEndpoint, updateWebhookEndpoint, deleteWebhookEndpoint, getWebhookSecret, rotateWebhookSecret } from '../dist/index.js';
 import { mock, ok, credentials, workspaceStep, signer, template, readyDocument, NOW, hasCode } from './helpers.mjs';
 import event from '../examples/document-ready.json' with { type: 'json' };
 import { validate } from '../dist/validation.js';
@@ -127,6 +127,7 @@ test('OAuth can enable signing or rotate its secret and preserves endpoint pause
 });
 test('unconfirmed endpoint writes and secret rotation report unknown outcomes without replay', async () => {
   const cases = [
+    [() => [catalog(), workspaceStep(), { response: ok([]) }], endpoint, c => registerWebhookEndpoint(c, input)],
     [() => [catalog(), workspaceStep(), { response: ok([]) }], { ...endpoint, updated_at: null }, c => registerWebhookEndpoint(c, input)],
     [() => [catalog(), workspaceStep(), { response: ok([]) }], { ...endpoint, is_active: false }, c => registerWebhookEndpoint(c, input)],
     [() => [workspaceStep()], { ...endpoint, is_active: true }, c => updateWebhookEndpoint(c, endpoint.id, { is_active: false })],
@@ -195,5 +196,30 @@ test('failing response cleanup preserves redacted redirect and size errors', asy
     const m = mock([{ response: new Response(body(), { headers }) }]);
     const c = new AssinafyClient(credentials, { ...m.runtime, maxDownloadBytes: 1 });
     await assert.rejects(c.binary('/documents/document1/download/original'), hasCode('RESPONSE_TOO_LARGE')); m.done();
+  }
+});
+
+test('webhook rotation preserves its grace deadline and both delivery signatures verify', async () => {
+  const oldKey = Buffer.from('old-test-secret'); const newKey = Buffer.from('new-test-secret');
+  const expected = { secret: `whsec_${newKey.toString('base64')}`, previous_secret_expires_at: new Date(NOW + 86400000).toISOString(), future_field: 'preserved' };
+  const m = mock([workspaceStep(), { response: ok(expected), check(url, init) {
+    assert.ok(url.pathname.endsWith('/endpoint1/secret/rotate')); assert.equal(init.method, 'POST');
+    assert.deepEqual(JSON.parse(init.body), { keep_previous: true });
+  } }]);
+  assert.deepEqual(await rotateWebhookSecret(client(m), endpoint.id, { keep_previous: true }), expected); m.done();
+  const raw = JSON.stringify(event); const timestamp = String(NOW / 1000);
+  const headers = new Headers({ 'webhook-id': 'rotated-message', 'webhook-timestamp': timestamp,
+    'webhook-signature': [oldKey, newKey].map(key => 'v1,' + createHmac('sha256', key).update(`rotated-message.${timestamp}.${raw}`).digest('base64')).join(' ') });
+  for (const key of [oldKey, newKey]) await verifyWebhookSignature(raw, headers, `whsec_${key.toString('base64')}`, NOW);
+});
+
+test('webhook rotation validates inputs and incomplete grace responses remain uncertain', async () => {
+  const invalid = mock([]);
+  for (const input of [{ keep_previous: 'true' }, { extra: true }, null]) await assert.rejects(rotateWebhookSecret(client(invalid), endpoint.id, input), hasCode('INVALID_INPUT'));
+  invalid.done();
+  for (const previous_secret_expires_at of [undefined, null, 'not-a-date']) {
+    const m = mock([workspaceStep(), { response: ok({ secret: 'whsec_dGVzdC1rZXk=', previous_secret_expires_at }) }]);
+    await assert.rejects(rotateWebhookSecret(client(m), endpoint.id, { keep_previous: true }), e => e.outcomeUnknown && !e.safeToRetry);
+    m.done();
   }
 });

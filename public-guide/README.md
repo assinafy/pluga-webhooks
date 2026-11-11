@@ -94,7 +94,7 @@ Use **`object.id`** como ID do documento. O `id` superior identifica a atividade
 Adicione uma consulta HTTP autenticada:
 
 ```text
-GET https://api.assinafy.com.br/v1/documents/DOCUMENT_ID?expand=assignment
+GET https://api.assinafy.com.br/v1/documents/DOCUMENT_ID
 X-Api-Key: SUA_CHAVE
 Accept: application/json
 ```
@@ -176,7 +176,7 @@ Se houver campos do editor no modelo, inclua `editor_fields: [{"field_id":"FIELD
 
 ### Solicitar assinatura de um documento existente
 
-Primeiro consulte o documento com `expand=assignment`. Confirme workspace, estado compatível e ausência de uma solicitação existente.
+Primeiro consulte o documento; assignment já faz parte da resposta. Confirme workspace, estado compatível e ausência de uma solicitação existente.
 
 ```text
 POST https://api.assinafy.com.br/v1/documents/DOCUMENT_ID/assignments
@@ -223,7 +223,7 @@ Eventos podem ser entregues novamente ou fora de ordem. O fluxo validado de rece
 - Para atualizar registros existentes, use o ID do documento como chave de correspondência no destino e consulte sempre o estado atual. Configure e teste a ação de atualização, em vez de acrescentar um novo registro a cada entrega.
 - Para ações que não podem se repetir, registre `account_id + ":" + id` do evento em armazenamento persistente, com reserva atômica antes da ação e estados de processamento/conclusão. Marque a conclusão somente depois de confirmar o resultado; resultado incerto exige reconciliação.
 - Para criações iniciadas em CRM/planilha, use o ID único da operação de origem, persista o ID do documento resultante e impeça duas execuções simultâneas da mesma operação. Uma consulta seguida de criação sem controle de concorrência não garante isso.
-- Não presuma deduplicação automática da Pluga ou suporte a um header `Idempotency-Key` da Assinafy. Essas garantias não foram demonstradas neste fluxo. Se o produtor/destino não oferecer o controle necessário, mantenha as criações sob execução supervisionada até implementá-lo.
+- A criação por modelo aceita `Idempotency-Key`: persista uma chave nova por documento pretendido e reutilize-a somente para reconciliar a mesma criação. Repetir a chave devolve o documento original, mesmo se o body mudar; a chave não expira. Isso não instala deduplicação na Pluga nem cobre os outros POSTs. Use `max_total_credits` da estimativa para limitar o gasto.
 - Em timeout ou HTTP 5xx depois de uma criação/envio, verifique primeiro se o documento ou convite já existe. Não repita o POST automaticamente nem use o reprocessamento em massa antes dessa conferência.
 
 Esse controle persistente depende do produtor/destino escolhido e não é instalado por este guia. A publicação do tutorial não ativa automações de escrita na conta do cliente.

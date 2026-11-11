@@ -20,7 +20,7 @@ Para a configuração manual por chave, use X-Api-Key. OAuth2 com PKCE e Bearer 
 1. Escolha a origem da automação. Para o teste inicial, use **Pluga Webhooks → Notificação recebida**, com dados fictícios.
 2. Adicione **HTTP Request → Enviar uma mensagem via HTTP Request** como ação. A ação antiga de Webhooks foi validada para GET e criação de signatário com campos simples; use HTTP Request para corpos com arrays.
 3. Use o método e o caminho de `recipes/requests.json`, precedido pela URL da API. Substitua `{accountId}`, `{documentId}` e `{templateId}` pelos IDs selecionados. Esses marcadores são explicativos; não são tags nativas da Pluga.
-4. Configure `X-Api-Key` e `Accept: application/json`. Para JSON, configure também `Content-Type: application/json`.
+4. Configure `X-Api-Key` e `Accept: application/json`. Para JSON, configure também `Content-Type: application/json`. Mescle os headers específicos da receita; substitua `<UNIQUE_DOCUMENT_REQUEST_KEY>` por uma chave persistida e diferente para cada documento pretendido.
 5. Em **Tipo de preenchimento dos campos da requisição**, selecione **Preencher campos com um JSON**. Cole o objeto completo no campo **Corpo da requisição (JSON)** e configure **Cabeçalhos (JSON)** como um objeto contendo `X-Api-Key`, `Accept` e `Content-Type`. Preserve arrays e objetos; `signers` precisa ser uma lista de objetos, não uma string contendo JSON. Confirme o corpo efetivamente enviado no teste do construtor antes de ativar etapas com envio de convites.
 6. Quando houver etapas seguintes, informe o `response_model` da receita. No envelope da Assinafy, o ID criado está em **`data.id`**. O histórico da ação Webhooks da Pluga adicionou outro nível `data`; nele o ID aparece em `data.data.id`. Selecione o campo pela estrutura observada no retorno da ação escolhida.
 7. Teste e confira o registro em Assinafy e o histórico da automação antes de ativar.
@@ -45,6 +45,7 @@ Informe o contato necessário antes de solicitar assinatura; o cadastro aceita s
 - Mapeie uma entrada em `signers` para cada papel Signer: `role_id` do modelo e `id` do signatário existente, ou `email` e `name` para resolução/criação inline. CopyReceiver é opcional.
 - Preencha todos os campos do editor com valores não vazios; use `editor_fields: [{"field_id":"ID_DO_CAMPO","value":"VALOR"}]`. Remova esse campo se o modelo não tiver campos do editor.
 - A receita usa verificação e notificação por `Email`. `Whatsapp`, `DigitalCertificate` (A1/A3) e `IdDocumentFaceMatchBasic` (biometria) também são aceitos; canais, requisitos de CPF/CNPJ e revisão estão em [API.md](API.md#verificação-e-notificação).
+- Use `Idempotency-Key` persistente por documento na criação por modelo; `max_total_credits` limita a cobrança à última estimativa. `embedded` por signer aceita Email/Whatsapp; o backend emite a sessão de iframe conforme [API.md](API.md#assinatura-incorporada).
 - `name`, `message`, `expires_at` e `tags` são opcionais. Expiração exige ISO 8601 com fuso, pelo menos uma hora à frente.
 - **Esta chamada cria o documento e inicia o fluxo de assinatura em segundo plano.** A resposta inicial é uploaded/assignment null; acompanhe pending_signature/assignment_created ou failed/document_processing_failed. Use somente destinatários autorizados no teste.
 
@@ -54,13 +55,13 @@ Os IDs ilustrativos em `recipes/requests.json` devem ser substituídos por IDs d
 
 `POST /documents/{documentId}/assignments`
 
-Leia antes `GET /documents/{documentId}?expand=assignment`. Confirme `data.account_id`, ausência de uma solicitação existente e estado compatível. Use `method: "virtual"` e `signers: [{"id":"ID_DO_SIGNATARIO", "verification_method":"Email", "notification_methods":["Email"]}]`.
+Leia antes `GET /documents/{documentId}`. Confirme `data.account_id`, ausência de uma solicitação existente e estado compatível. Use `method: "virtual"` e `signers: [{"id":"ID_DO_SIGNATARIO", "verification_method":"Email", "notification_methods":["Email"]}]`.
 
 O modo `collect` exige campos posicionados em páginas e está validado no cliente de referência. O fluxo inicial usa `virtual`; use corpo JSON completo também para `collect`.
 
 ### Consultar documento / listas
 
-Use `GET /documents/{documentId}?expand=assignment` para verificar o estado real e o workspace. Trate URLs de artefatos como endpoints autenticados, não como links públicos prontos para compartilhar.
+Use `GET /documents/{documentId}` para verificar o estado real e o workspace. Trate URLs de artefatos como endpoints autenticados, não como links públicos prontos para compartilhar.
 
 Para **Nova requisição na API**, listas usam chave de dados `data` e chave única `id` (`document_id` para contratos CLM). `page=1&per-page=50` é apenas uma página. Não anuncie leitura de todos os registros sem testar paginação. Deduplicar somente por documento não identifica todas as mudanças de status; prefira notificações recebidas para eventos de assinatura.
 
@@ -95,6 +96,6 @@ HTTP 401: confira a chave; 403: permissões/workspace; 400/422: campos; 429: res
 
 - [Guia oficial Pluga Webhooks](https://pluga.zendesk.com/hc/pt-br/articles/360007678434-Pluga-Webhooks-Como-criar-automatiza%C3%A7%C3%B5es-com-ferramentas-n%C3%A3o-integradas-%C3%A0-Pluga)
 - [Documentação Assinafy](https://api.assinafy.com.br/v1/docs), seções Authentication, Webhooks e Webhook Payloads.
-- [Contrato OpenAPI Assinafy](https://api.assinafy.com.br/v1/docs/openapi.json), consultado em 2026-10-28.
+- [Contrato OpenAPI Assinafy](https://api.assinafy.com.br/v1/docs/openapi.json), consultado em 2026-11-11.
 
 - [HTTP Request: corpo e cabeçalhos JSON](https://pluga.co/ferramentas/http-request/integracao/), consultado em 2026-10-04. Recurso Premium; a conta de teste usa o período de experimentação.

@@ -7,7 +7,7 @@ export const API_URLS = Object.freeze({
   sandbox: 'https://sandbox.assinafy.com.br/v1',
 });
 type Query = Record<string, string | number | undefined>;
-interface RequestOptions { query?: Query; json?: unknown; form?: FormData }
+interface RequestOptions { query?: Query; json?: unknown; form?: FormData; idempotencyKey?: string }
 const HINTS: Record<number, string> = {
   400: 'Assinafy rejected the request.', 401: 'Reconnect Assinafy.',
   403: 'Check connection permissions, OAuth scopes and workspace access.', 404: 'The resource was not found.',
@@ -21,7 +21,7 @@ export class AssinafyClient {
   readonly runtime: Runtime;
   readonly #fetch: typeof globalThis.fetch;
   readonly #headers: Record<string, string>;
-  readonly #selectedAccount: string | undefined;
+  readonly #selectedAccount: string;
   #workspace: Promise<Account> | undefined;
   constructor(credentials: Credentials, runtime: Runtime = {}) {
     invariant(record(credentials), 'INVALID_CREDENTIALS', 'An Assinafy connection is required.');
@@ -56,6 +56,7 @@ export class AssinafyClient {
   async #send(url: string, method: string, options: RequestOptions = {}, authenticated = true, binary = false): Promise<Response> {
     // Assinafy negotiates JSON before the download handler sends binary bytes.
     const headers: Record<string, string> = { Accept: binary ? 'application/json, application/pdf, application/zip, application/octet-stream' : 'application/json', ...(authenticated ? this.#headers : {}) };
+    if (options.idempotencyKey !== undefined) headers['Idempotency-Key'] = options.idempotencyKey;
     const init: RequestInit = { method, headers, redirect: 'manual', signal: AbortSignal.timeout(this.runtime.timeoutMs ?? 30_000) };
     if (options.json !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -82,6 +83,11 @@ export class AssinafyClient {
     return response;
   }
   async envelope<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, options: RequestOptions = {}): Promise<{ data: T; headers: Headers }> {
+    if (options.idempotencyKey !== undefined) {
+      checkIdempotencyKey(options.idempotencyKey);
+      invariant(method === 'POST' && /^\/accounts\/[^/]+\/templates\/[^/]+\/documents$/.test(path),
+        'INVALID_INPUT', 'Idempotency keys are supported only for document creation from a template.');
+    }
     const response = await this.#send(this.#url(path, options.query), method, options);
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel().catch(() => {});
@@ -105,8 +111,8 @@ export class AssinafyClient {
   async get<T>(path: string, query?: Query): Promise<T> {
     return (await this.envelope<T>('GET', path, query ? { query } : {})).data;
   }
-  async post<T>(path: string, json: unknown): Promise<T> {
-    return this.#created<T>(path, { json });
+  async post<T>(path: string, json: unknown, idempotencyKey?: string): Promise<T> {
+    return this.#created<T>(path, { json, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) });
   }
   async upload<T>(path: string, form: FormData): Promise<T> {
     return this.#created<T>(path, { form });
@@ -129,6 +135,9 @@ export class AssinafyClient {
       for (const row of rows) invariant(record(row) && (typeof row[idKey] === 'string' ? ID_PATTERN.test(row[idKey]) :
         Number.isSafeInteger(row[idKey]) && Number(row[idKey]) > 0), 'INVALID_RESPONSE', 'A list entry has no valid identifier.');
       const key = (row: T) => (row as Record<string, unknown>)[idKey] as string | number;
+      const currentPage = headers.get('x-pagination-current-page');
+      invariant(currentPage === null || Number(currentPage) === page,
+        'PAGINATION_INCONSISTENT', 'The API returned a different page from the one requested.');
       const rawPages = headers.get('x-pagination-page-count');
       const pages = rawPages === null ? undefined : Number(rawPages);
       if (pages !== undefined) {
@@ -148,7 +157,10 @@ export class AssinafyClient {
         return [...result.values()];
       }
       signatures.add(signature);
-      for (const row of rows) result.set(key(row), row);
+      for (const row of rows) {
+        invariant(!result.has(key(row)), 'PAGINATION_INCONSISTENT', 'The API returned overlapping records. Repeat the lookup before writing.');
+        result.set(key(row), row);
+      }
       if (pageCount !== undefined ? page >= pageCount : rows.length < 50) return [...result.values()];
       invariant(rows.length > 0, 'PAGINATION_INCONSISTENT', 'An empty page appeared before the reported end.');
     }
@@ -157,13 +169,9 @@ export class AssinafyClient {
   async workspace(): Promise<Account> {
     if (!this.#workspace) {
       this.#workspace = this.list<Account>('/accounts').then(accounts => {
-        if (this.#selectedAccount) {
-          const account = accounts.find(row => row.id === this.#selectedAccount);
-          invariant(account, 'WORKSPACE_ACCESS_DENIED', 'The selected workspace is not accessible to this connection.');
-          return account;
-        }
-        invariant(accounts.length === 1, 'WORKSPACE_REQUIRED', 'Select a workspace explicitly when the connection does not expose exactly one workspace.');
-        return accounts[0]!;
+        const account = accounts.find(row => row.id === this.#selectedAccount);
+        invariant(account, 'WORKSPACE_ACCESS_DENIED', 'The selected workspace is not accessible to this connection.');
+        return account;
       }).catch(error => { this.#workspace = undefined; throw error; });
     }
     return this.#workspace;
@@ -204,6 +212,10 @@ export class AssinafyClient {
     }
     throw new IntegrationError('REDIRECT_BLOCKED', 'Too many file-download redirects.');
   }
+}
+export function checkIdempotencyKey(value: unknown): void {
+  invariant(typeof value === 'string' && /^[\x20-\x7e]+$/.test(value) && value.trim() === value,
+    'INVALID_INPUT', 'Use a non-empty printable ASCII idempotency key without surrounding whitespace.');
 }
 export function checkTimeout(runtime: Runtime): void {
   invariant(runtime.timeoutMs === undefined || (Number.isInteger(runtime.timeoutMs) && runtime.timeoutMs > 0 && runtime.timeoutMs <= 120_000),

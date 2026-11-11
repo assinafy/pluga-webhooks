@@ -121,7 +121,8 @@ export async function refreshOAuthToken(application: OAuthApplication, refreshTo
   const metadata = await discovery(env, runtime);
   const rotated = tokens(await request(String(metadata.token_endpoint), runtime, { grant_type: 'refresh_token', client_id: application.clientId,
     refresh_token: refreshToken, ...(application.clientSecret ? { client_secret: application.clientSecret } : {}) }));
-  invariant(rotated.refresh_token, 'OAUTH_OUTCOME_UNKNOWN', 'The rotated refresh token is missing; reconnect instead of reusing the previous token.', { outcomeUnknown: true });
+  invariant(rotated.refresh_token && rotated.refresh_token !== refreshToken, 'OAUTH_OUTCOME_UNKNOWN',
+    'A new rotated refresh token is required; reconnect instead of reusing the previous token.', { outcomeUnknown: true });
   return rotated;
 }
 export async function revokeOAuthToken(application: OAuthApplication, token: string, runtime: Runtime = {}): Promise<void> {
