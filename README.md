@@ -86,6 +86,8 @@ const uploaded = await client.upload(await client.accountPath('/documents'), for
 
 Depois, chame `request_signatures` com `method: "virtual"` ou `"collect"`. O cliente recusa assignment existente, contatos de outro workspace, passos inválidos e placements fora da página.
 
+Para enviar vários PDFs juntos, aguarde `metadata_ready` em todos e crie um envelope com chave persistida via `client.post(await client.accountPath('/envelopes'), body, savedKey)`. Cada documento mantém sua assinatura e certificado. Consulte [fluxo e payloads de envelopes](docs/ENVELOPES.md).
+
 ### 3. Escolha verificação e notificação
 
 | Verificação | Notificação | Requisitos |

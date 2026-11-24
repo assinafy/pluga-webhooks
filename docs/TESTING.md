@@ -9,7 +9,7 @@ npm run contract
 npm run test:coverage
 ```
 
-`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos, assinaturas Standard Webhooks, rotação OAuth, signatários inline, termos/aditivos CLM, paginação por document_id, conflitos e eventos de contrato, teto de créditos, chave de idempotência, embedded, expansões de documentos/famílias, transição de segredos e recusa de refresh sem rotação.
+`check` executa lint/sintaxe, typecheck estrito, build e testes Node.js. A suíte usa transporte simulado e bloqueia acesso real à rede: não cria documentos, modifica endpoints ou envia convites. Os cenários cobrem API key/OAuth, isolamento de workspace/ambiente, todas as ações/listas, geometria collect, Email/WhatsApp/DigitalCertificate/IdDocumentFaceMatchBasic, combinações de canais em template/virtual/collect, CPF/CNPJ, revisão de identidade, limites, paginação, redirects, resultados desconhecidos de escrita, PKCE, refresh, revogação, segredo retornado na criação, endpoints múltiplos, assinaturas Standard Webhooks, rotação OAuth, signatários inline, termos/aditivos CLM, paginação por document_id, conflitos e eventos de contrato, teto de créditos, chave de idempotência, embedded, expansões de documentos/famílias, transição de segredos e recusa de refresh sem rotação, criação idempotente de envelopes, operações de gerenciamento/ZIP e rejeição de bodies JSON/multipart ambíguos.
 
 Use releases corrigidos das linhas suportadas: Node.js 22.23.4+, 24.22.1+ ou 26.12.1+. A matriz da CI resolve o patch mais recente de cada major.
 
@@ -50,6 +50,10 @@ Biometria exige CPF válido, recurso ID Document + Face Match e captura consenti
 
 Use somente documentos e contratos de teste. Cadastre termos, consulte a lista/família, altere com updated_at e confirme 409 com uma versão antiga. Vincule um aditivo e confirme que o pai só muda após certificated. Teste renovação com term atual, recusa do term antigo e encerramento. Leia os eventos document_contract_* e confirme recuperação por updated_at. Produção e sandbox podem disponibilizar CLM em momentos diferentes.
 
+## Aceitação de envelopes e Embed
+
+Use PDFs sintéticos processados e contatos autorizados. Estime, crie com chave persistida e confirme que o replay explícito retorna o mesmo envelope; consulte, reordene e altere a mensagem. Adicione e retire um documento, confira atividades/ZIP e as expansões envelope_id/envelope. Teste conflitos, teto de créditos e resultados desconhecidos sem replay automático. Para Embed, crie uma origem própria, envie embedded true e emita a sessão no backend; complete a verificação e assinatura dentro da origem permitida, consulte certificated e confira os artefatos. Cancele/exclua somente os registros criados pelo teste e remova sua origem temporária. Scripts e resultados de execução ficam em artifacts/, sem commit.
+
 ## Aceitação OAuth
 
 Registre uma aplicação de teste com callback HTTPS. Um Cloudflare Quick Tunnel pode expor apenas o handler de callback em loopback durante o teste. Não exponha arquivos locais, tokens ou um servidor genérico de diretório.
@@ -66,4 +70,4 @@ As execuções de produção de 2026-10-04 estão registradas em [live-acceptanc
 
 GitHub Actions executa os checks em Node.js 22, 24 e 26, valida documentação e o contrato público da API. Nenhum segredo de workspace é necessário no CI. Uma indisponibilidade do OpenAPI impede o check de contrato e deve ser resolvida antes do release.
 
-Atualize package.json/package-lock.json com a versão compatível com a mudança, execute os checks e crie a tag `vVERSÃO` no commit aprovado. Faça push do commit e da tag, confira o SHA do workflow e aguarde todas as execuções terminarem. Não publique credentials, artefatos locais, AGENTS.md ou CLAUDE.md.
+Atualize package.json/package-lock.json com a versão compatível com a mudança, execute os checks e crie a tag `vVERSÃO` no commit aprovado. Somente depois de autorização explícita, faça push do commit e da tag, confira o SHA do workflow e aguarde todas as execuções terminarem. Não publique credentials, artefatos locais, AGENTS.md ou CLAUDE.md.

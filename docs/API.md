@@ -31,11 +31,13 @@ O timeout padrão é 30 segundos; aceita 1–120000 ms. `maxPages` tem padrão 2
 | `workspace()` | `GET /accounts?page=N&per-page=50` | `Account` selecionado; coalesce consultas concorrentes e exige acesso ao ID configurado |
 | `accountPath(suffix)` | Consulta workspace quando necessário | `/accounts/ACCOUNT_ID` + suffix; use somente suffix definido pela aplicação |
 | `get(path, query?)` | GET autenticado, query codificada | `data` do envelope, com tipo genérico escolhido pelo chamador |
-| `envelope(method, path, options?)` | GET/POST/PUT/PATCH/DELETE; opções `query`, `json` ou `form`; `idempotencyKey?` somente na criação por modelo | `{data, headers}`; exige status do envelope igual ao HTTP |
+| `envelope(method, path, options?)` | GET/POST/PUT/PATCH/DELETE; opções `query`, `json` ou `form`; `idempotencyKey?` na criação por modelo ou de envelope | `{data, headers}`; exige status do envelope igual ao HTTP |
 | `post(path, json, idempotencyKey?)` | POST JSON autenticado | Recurso em `data`, com ID válido; use para criações |
 | `upload(path, form)` | POST multipart autenticado | Recurso criado em `data`, com ID válido; boundary gerado pelo transporte |
 | `list(path, query?, idKey?)` | GET paginado com 50 registros por página | Lista completa; `idKey` é `id` por padrão ou `document_id` para contratos; falha se páginas forem inconsistentes ou o orçamento acabar |
 | `binary(path)` | GET com negociação de JSON/PDF/ZIP/bytes | `Uint8Array`; rejeita páginas JSON/HTML e redirects não autorizados |
+
+`json` e `form` são mutuamente exclusivos; uma chamada com ambos falha antes de acessar a rede.
 
 Os paths de recursos aceitos começam com `/accounts`, `/documents` ou `/webhooks`. Não forneça URL completa nem path codificado. Os métodos de baixo nível não aplicam as regras de uma ação específica; `runAction` faz os preflights de documento, contatos, papéis e geometria. Não há replay automático.
 
@@ -49,6 +51,10 @@ const bytes = await client.binary(`/documents/${created.id}/download/original`);
 ```
 
 A resposta do upload é um Document, inicialmente em processamento, com pages e sem assignment. A criação por modelo inclui assignment (null inicialmente). has_contract aparece somente na consulta individual autenticada pelo workspace quando disponível; sua ausência significa desconhecido. O download retorna os bytes, sem envelope JSON. Escolha o artefato pela disponibilidade em `document.artifacts`: `original`, `certificated`, `certificate-page`, `pades` ou `bundle` em `/documents/DOCUMENT_ID/download/ARTEFATO`; `thumbnail` em `/documents/DOCUMENT_ID/thumbnail`, como JPEG.
+
+## Envelopes de documentos
+
+O cliente suporta criação idempotente, estimativa, consultas, alterações, adição/remoção de documentos, lembretes, cancelamento e download ZIP pelos métodos existentes. Veja [fluxo e todos os requests/responses](ENVELOPES.md).
 
 ## Ações e listas
 

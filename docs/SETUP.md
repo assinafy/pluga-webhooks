@@ -86,6 +86,10 @@ A API suporta Standard Webhooks: crie o endpoint com signing_enabled e guarde o 
 
 Use as receitas list_contracts, get_contract, update_contract, get_contract_family, renew_contract e terminate_contract. Os termos pertencem a um documento existente e usam document_id como chave. Para aditivos, use link_contract_amendment no documento do instrumento. Preserve arrays/objetos e copie updated_at da consulta antes de alterar termos; 409 exige reconciliação. O [fluxo de CLM](CONTRACTS.md) contém todos os requests/responses e eventos.
 
+## Envelopes
+
+Use as receitas estimate_envelope e create_envelope para agrupar PDFs já processados. Preserve o header Idempotency-Key por envio pretendido e consulte cada documento após os eventos. As receitas de consulta, alteração, lembrete, cancelamento e download estão no [fluxo de envelopes](ENVELOPES.md).
+
 ## PDF, erros e recuperação
 
 Upload Assinafy exige `multipart/form-data` com arquivo binário; URL e base64 enviados em JSON não substituem o arquivo. O cliente local possui `upload()`/`binary()` para diagnóstico, mas o transporte equivalente dentro da Pluga ainda não foi validado. Não é necessário hospedar um conversor para trabalhar com modelos já existentes.

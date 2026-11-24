@@ -75,3 +75,45 @@ test('CLM recipes and documented bodies match every supported request field and 
   assert.equal(worksheet.requests.find(row => row.id === 'list_contracts').unique_key, 'document_id');
   assert.equal(worksheet.requests.find(row => row.id === 'rotate_webhook_secret').api_key_only, undefined);
 });
+
+test('every envelope operation has a recipe and documented complete payloads from its pinned contract', async () => {
+  const reference = await readFile(new URL('../docs/ENVELOPES.md', import.meta.url), 'utf8');
+  const examples = [...reference.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1]));
+  const operations = contract.operations.filter(row => row.path.includes('/envelopes'));
+  assert.equal(operations.length, 12);
+  for (const op of operations) {
+    const recipe = worksheet.requests.find(row => row.method === op.method && row.path === op.path);
+    assert.ok(recipe, `${op.method} ${op.path}`);
+    for (const value of [recipe.body, recipe.response_model].filter(Boolean)) {
+      assert.ok(examples.some(example => JSON.stringify(example) === JSON.stringify(value)), recipe.id);
+    }
+    if (!op.requestBody) assert.equal(recipe.body, undefined);
+  }
+  const create = worksheet.requests.find(row => row.id === 'create_envelope').body;
+  const fields = (value, schema) => assert.deepEqual(Object.keys(value).sort(), Object.keys(schema.properties).sort());
+  fields(create, contract.schemas.EnvelopeCreateRequest);
+  fields(create.signers[0], contract.schemas.EnvelopeCreateRequest.properties.signers.items);
+  fields(create.documents[0], contract.schemas.EnvelopeDocumentRequest);
+  const model = worksheet.requests.find(row => row.id === 'get_envelope').response_model.data;
+  fields(model, contract.schemas.DocumentEnvelope);
+  fields(model.documents[0], contract.schemas.DocumentEnvelope.properties.documents.items);
+  fields(model.documents[0].signers[0], contract.schemas.DocumentEnvelope.properties.documents.items.properties.signers.items);
+  fields(model.signing_urls[0], contract.schemas.SigningUrl);
+});
+
+test('action recipes preserve complete documented response models and state-dependent omissions', async () => {
+  const reference = await readFile(new URL('../docs/API.md', import.meta.url), 'utf8');
+  for (const [name, action] of Object.entries(contract.actions)) {
+    const section = reference.split(`### ${name}\n`)[1].split('\n### ')[0];
+    const model = [...section.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1])).find(value => value.data).data;
+    for (const recipe of worksheet.requests.filter(row => row.path === action.path && row.method === action.method)) {
+      assert.deepEqual(Object.keys(recipe.response_model.data).sort(), Object.keys(model).sort(), recipe.id);
+      if (name === 'create_document_from_template') {
+        assert.equal(recipe.response_model.data.assignment, null);
+        assert.equal(recipe.response_model.data.status, 'uploaded');
+        assert.equal(Object.hasOwn(recipe.response_model.data, 'has_contract'), false);
+      }
+      if (name === 'request_signatures') assert.equal(recipe.response_model.data.method, recipe.body.method);
+    }
+  }
+});

@@ -122,3 +122,10 @@ test('private storage origins and oversized responses are rejected', async () =>
   await assert.rejects(limitedBody(new Response('12345678901'), 10), hasCode('RESPONSE_TOO_LARGE'));
   await assert.rejects(limitedBody(new Response('test', { headers: { 'Content-Length': '9999' } }), 10), hasCode('RESPONSE_TOO_LARGE'));
 });
+
+test('ambiguous multipart and JSON bodies fail before any request is sent', async () => {
+  const m = mock([]);
+  const c = new AssinafyClient(credentials, m.runtime);
+  await assert.rejects(c.envelope('POST', '/accounts/workspace1/documents', { json: { name: 'Example' }, form: new FormData() }), hasCode('INVALID_INPUT'));
+  m.done();
+});

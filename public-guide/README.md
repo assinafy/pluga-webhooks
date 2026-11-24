@@ -212,6 +212,10 @@ Biometria usa foto do documento, foto com o documento e prova de vida na interfa
 
 `DigitalCertificate` não funciona com `collect`: use `method: "virtual"`. No envio por modelo, escolha um modelo sem campos posicionados para papéis Signer; esses campos geram um assignment `collect`. O cliente recusa as duas combinações com `DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL` antes do envio.
 
+## Envelopes
+
+As receitas incluem estimativa, criação idempotente, consultas, alterações, adição/remoção de documentos, lembretes, cancelamento e ZIPs. Agrupe PDFs já em metadata_ready, com signatários existentes; cada documento mantém status, assinatura e certificado próprios. Veja [requests, responses e fluxo completo](../docs/ENVELOPES.md).
+
 ## Gestão de contratos
 
 Depois de criar o documento, use PUT `/accounts/ACCOUNT_ID/documents/DOCUMENT_ID/contract` para registrar contraparte, valor, vigência, renovação e referências ao CRM. Consulte os termos por GET no mesmo path; use updated_at da consulta como precondição de escrita. A lista GET `/accounts/ACCOUNT_ID/contracts` usa document_id como chave. Aditivos são documentos vinculados ao pai e aplicados após certificação. As receitas incluem consulta, edição, família, renovação e encerramento; veja [payloads e fluxo completo](../docs/CONTRACTS.md). Eventos document_contract_* permitem atualizar o destino após nova consulta autenticada.
@@ -223,7 +227,7 @@ Eventos podem ser entregues novamente ou fora de ordem. O fluxo validado de rece
 - Para atualizar registros existentes, use o ID do documento como chave de correspondência no destino e consulte sempre o estado atual. Configure e teste a ação de atualização, em vez de acrescentar um novo registro a cada entrega.
 - Para ações que não podem se repetir, registre `account_id + ":" + id` do evento em armazenamento persistente, com reserva atômica antes da ação e estados de processamento/conclusão. Marque a conclusão somente depois de confirmar o resultado; resultado incerto exige reconciliação.
 - Para criações iniciadas em CRM/planilha, use o ID único da operação de origem, persista o ID do documento resultante e impeça duas execuções simultâneas da mesma operação. Uma consulta seguida de criação sem controle de concorrência não garante isso.
-- A criação por modelo aceita `Idempotency-Key`: persista uma chave nova por documento pretendido e reutilize-a somente para reconciliar a mesma criação. Repetir a chave devolve o documento original, mesmo se o body mudar; a chave não expira. Isso não instala deduplicação na Pluga nem cobre os outros POSTs. Use `max_total_credits` da estimativa para limitar o gasto.
+- A criação por modelo aceita `Idempotency-Key`: persista uma chave nova por documento pretendido e reutilize-a somente para reconciliar a mesma criação. Repetir a chave devolve o documento original, mesmo se o body mudar; a chave não expira. A criação de envelopes também aceita a chave, no escopo do workspace; isso não instala deduplicação na Pluga nem cobre outros POSTs. Use `max_total_credits` da estimativa para limitar o gasto.
 - Em timeout ou HTTP 5xx depois de uma criação/envio, verifique primeiro se o documento ou convite já existe. Não repita o POST automaticamente nem use o reprocessamento em massa antes dessa conferência.
 
 Esse controle persistente depende do produtor/destino escolhido e não é instalado por este guia. A publicação do tutorial não ativa automações de escrita na conta do cliente.

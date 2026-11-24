@@ -1,6 +1,6 @@
 {
   "source": "https://api.assinafy.com.br/v1/docs/openapi.json",
-  "retrieved": "2026-11-11",
+  "retrieved": "2026-11-24",
   "actions": {
     "create_signer": {
       "name": "Create Signer",
@@ -2733,6 +2733,390 @@
         }
       },
       "type": "object"
+    },
+    "DocumentEnvelope": {
+      "description": "Documents sent together to the same signers. Each document keeps its own assignment, status, certificate and downloads.",
+      "required": [
+        "id",
+        "name",
+        "message",
+        "documents",
+        "counts",
+        "signing_urls",
+        "created_at"
+      ],
+      "properties": {
+        "resource": {
+          "description": "Present in single-resource responses.",
+          "type": "string",
+          "example": "envelope"
+        },
+        "id": {
+          "type": "string",
+          "example": "1a2f3c4d5e6f708192a3b4c5d6e"
+        },
+        "name": {
+          "type": "string",
+          "example": "Contrato de prestação de serviços"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "Segue o contrato e seus anexos."
+        },
+        "documents": {
+          "description": "The envelope's documents, in the order it lists them.",
+          "type": "array",
+          "items": {
+            "required": [
+              "id",
+              "position",
+              "name",
+              "status",
+              "artifacts",
+              "signers"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "615601fab04c0a3147bb1246"
+              },
+              "position": {
+                "description": "The document's place in the envelope's order, from 1.",
+                "type": "integer",
+                "minimum": 1,
+                "example": 1
+              },
+              "name": {
+                "type": "string",
+                "example": "contrato.pdf"
+              },
+              "status": {
+                "description": "Status code — see GET /v1/documents/statuses.",
+                "type": "string",
+                "example": "pending_signature"
+              },
+              "artifacts": {
+                "description": "The document's files, as its own read (`GET /v1/documents/{documentId}`) gives them: always `original`, plus `thumbnail` once one exists, and for a certificated document `certificated`, `certificate-page`, `bundle` and, when signed with a digital certificate, `pades`. In the envelope list (`GET /v1/accounts/{accountId}/envelopes`) only `thumbnail`, given without checking that it exists: its URL answers `404` until the thumbnail is generated.",
+                "type": "object",
+                "example": {
+                  "original": "https://api.assinafy.com.br/v1/documents/615601fab04c0a3147bb1246/download/original",
+                  "thumbnail": "https://api.assinafy.com.br/v1/documents/615601fab04c0a3147bb1246/thumbnail"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "signers": {
+                "description": "The document's signers: a signer appears only on the documents they are on.",
+                "type": "array",
+                "items": {
+                  "required": [
+                    "id",
+                    "full_name",
+                    "email",
+                    "whatsapp_phone_number",
+                    "completed",
+                    "signed_at"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "fa8c140cb49b79f940aab95fddd"
+                    },
+                    "full_name": {
+                      "type": "string",
+                      "example": "Ana Souza"
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "example": "ana@example.com"
+                    },
+                    "whatsapp_phone_number": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "example": "+5548999990001"
+                    },
+                    "completed": {
+                      "description": "Whether they have signed this document.",
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "signed_at": {
+                      "description": "When they signed this document; `null` until they do.",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "example": "2026-11-06T14:30:00Z"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "type": "object"
+          }
+        },
+        "counts": {
+          "description": "How many of its documents are in each status (status code => count); only the statuses present. An envelope has no status of its own. `null` once it lists no document: every one deleted or taken out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "example": {
+            "certificated": 1,
+            "pending_signature": 2
+          },
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "signing_urls": {
+          "description": "One entry per signer, as on an assignment (`SigningUrl`): the link of the document their invitation is sent from while it waits for them, else of their first document that still does (the e-mail page asks that document for the invitation again; any of their links opens the whole envelope).",
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SigningUrl"
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "example": "2026-11-04T12:00:00Z"
+        }
+      },
+      "type": "object"
+    },
+    "EnvelopeCreateRequest": {
+      "description": "An envelope as sent: on creation, and to estimate what creating it would cost.",
+      "required": [
+        "name",
+        "signers",
+        "documents"
+      ],
+      "properties": {
+        "name": {
+          "description": "What the invitation calls what is being signed, in place of a document's name. `<` is refused (`400`).",
+          "type": "string",
+          "maxLength": 255,
+          "minLength": 1,
+          "example": "Contrato de prestação de serviços"
+        },
+        "message": {
+          "description": "Optional message sent to every signer; their invitation adds the names of the documents they are on.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "example": "Segue o contrato e seus anexos."
+        },
+        "max_total_credits": {
+          "description": "Optional ceiling on what this request may spend, as on an assignment: refused with `409` and code `CreditCeilingExceeded`, nothing created or charged, when the envelope's total credits are above it. A value that is not a number of credits, zero or more, answers `400`; numeric text counts, as a form-encoded body sends it. The estimate ignores it.",
+          "type": "number",
+          "minimum": 0,
+          "example": 1.5
+        },
+        "signers": {
+          "description": "Every signer of the envelope, once, by id: up to 20. They all sign at once: an envelope takes no `step`.",
+          "type": "array",
+          "items": {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "description": "An existing signer's ID.",
+                "type": "string",
+                "minLength": 1,
+                "example": "fa8c140cb49b79f940aab95fddd"
+              },
+              "verification_method": {
+                "description": "As on an assignment. A `DigitalCertificate` signer signs only virtual documents, alone on each, each with their certificate, and is charged on each. An `IdDocumentFaceMatchBasic` signer checks their identity once for the whole envelope, and is charged for it once.",
+                "type": "string",
+                "enum": [
+                  "Email",
+                  "Whatsapp",
+                  "DigitalCertificate",
+                  "IdDocumentFaceMatchBasic"
+                ],
+                "example": "Email"
+              },
+              "notification_methods": {
+                "description": "As on an assignment: one method, inferred from `verification_method` when left out.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "Email",
+                    "Whatsapp"
+                  ]
+                },
+                "maxItems": 1,
+                "example": [
+                  "Email"
+                ]
+              },
+              "embedded": {
+                "description": "As on an assignment: the signer signs inside your app, through an embed session, on every document of the envelope, the ones added later too. Their `signing_urls` entry has no link (`url` is `null`). An embed session minted on any of their documents still waiting for them lists the documents of the envelope they still have to sign, and the code their invitation carries verifies them there.",
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 1
+        },
+        "documents": {
+          "description": "The documents, in the order the envelope lists them: up to 20.",
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/EnvelopeDocumentRequest"
+          },
+          "maxItems": 20,
+          "minItems": 1
+        }
+      },
+      "type": "object"
+    },
+    "EnvelopeDocumentRequest": {
+      "description": "A document of an envelope, as sent on creation (`documents[]`) and when added.",
+      "required": [
+        "id",
+        "signer_ids"
+      ],
+      "properties": {
+        "id": {
+          "description": "A `metadata_ready` document of the workspace with no assignment.",
+          "type": "string",
+          "minLength": 1,
+          "example": "615601fab04c0a3147bb1246"
+        },
+        "method": {
+          "description": "As on an assignment: `virtual` (the default), signed on its virtual page, or `collect`, signed on the fields placed in `entries`.",
+          "type": "string",
+          "default": "virtual",
+          "enum": [
+            "virtual",
+            "collect"
+          ]
+        },
+        "entries": {
+          "description": "Required for `collect`, as on an assignment: the fields placed on each page of the document. Its signers are the ones on its fields, exactly its `signer_ids`.",
+          "type": "array",
+          "items": {
+            "required": [
+              "page_id",
+              "fields"
+            ],
+            "properties": {
+              "page_id": {
+                "description": "A page of the document.",
+                "type": "string"
+              },
+              "fields": {
+                "description": "The fields placed on this page. A page with none adds nothing, as on an assignment.",
+                "type": "array",
+                "items": {
+                  "required": [
+                    "signer_id",
+                    "field_id",
+                    "display_settings"
+                  ],
+                  "properties": {
+                    "signer_id": {
+                      "description": "A signer of the document.",
+                      "type": "string"
+                    },
+                    "field_id": {
+                      "description": "A field definition of the workspace.",
+                      "type": "string"
+                    },
+                    "display_settings": {
+                      "$ref": "#/components/schemas/DisplaySettings"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "type": "object"
+          },
+          "minItems": 1
+        },
+        "signer_ids": {
+          "description": "The signers of this document, each listed once: on creation, signers listed in `signers`; when added, signers of the envelope's documents.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "example": [
+            "fa8c140cb49b79f940aab95fddd"
+          ]
+        },
+        "expires_at": {
+          "description": "This document's expiration, read as on an assignment, at least one hour in the future. Text is read as a date: ISO 8601 is the format to send (a UTC offset in the value is honored, a value without one is read as UTC, and a date alone means 23:59 UTC that day), and text that is a number is Unix time. A number is Unix time in seconds, its fraction dropped. Null, 0, an empty text or leaving it out means no expiration; a value that can't be read as a date answers `400`.",
+          "example": "2026-12-31T23:59:59Z",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "copy_receiver_ids": {
+          "description": "Signer IDs that only receive a copy of this document, as on an assignment.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "example": [
+            "cr8c140cb49b79f940aab95fddd"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "EnvelopeActivity": {
+      "description": "A document activity of an envelope's trail, naming its document.",
+      "required": [
+        "document_id",
+        "document_name"
+      ],
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/components/schemas/DocumentActivity"
+        },
+        {
+          "properties": {
+            "document_id": {
+              "description": "The document the activity is about.",
+              "type": "string",
+              "example": "fe1c140cb49b79f940aab95fddd"
+            },
+            "document_name": {
+              "type": "string",
+              "example": "Contrato.pdf"
+            }
+          },
+          "type": "object"
+        }
+      ]
     }
   },
   "webhookSubscriptionInput": {
@@ -6167,6 +6551,888 @@
           "name": "signerId",
           "in": "path",
           "description": "The signer ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/envelopes",
+      "requestBody": null,
+      "response": {
+        "description": "The workspace's envelopes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DocumentEnvelope"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          }
+        },
+        {
+          "name": "per-page",
+          "in": "query",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
+          "schema": {
+            "type": "integer",
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "example": 25
+          }
+        },
+        {
+          "name": "search",
+          "in": "query",
+          "description": "Part of the envelope's name.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "example": "Contrato"
+          }
+        },
+        {
+          "name": "status",
+          "in": "query",
+          "description": "`open`: envelopes with a document still open; `closed`: every document signed, declined, cancelled, expired or failed.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed"
+            ]
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/envelopes",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EnvelopeCreateRequest"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The created envelope",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentEnvelope"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "Idempotency-Key",
+          "in": "header",
+          "description": "Any text, case-sensitive and new for each envelope you mean to create (a UUID, say). Retrying with the same key after a lost response answers the envelope the first request created, and creates and charges nothing, whatever the body says. A key belongs to its workspace and doesn't expire. `409` with code `IdempotencyKeyInUse` if the first request is still running: try again. An empty value counts as no key, as on template documents.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/envelopes/estimate-cost",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EnvelopeCreateRequest"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "Cost estimate and balances",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CostEstimate"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}",
+      "requestBody": null,
+      "response": {
+        "description": "The envelope",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentEnvelope"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}",
+      "requestBody": null,
+      "response": {
+        "description": "Envelope deleted",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": [],
+                      "example": []
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "name": {
+                  "description": "What the invitation calls what is being signed. `<` is refused (`400`).",
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "example": "Contrato de prestação de serviços"
+                },
+                "message": {
+                  "description": "The message sent to every signer from now on; null for none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "example": "Segue o contrato e seus anexos."
+                },
+                "document_ids": {
+                  "description": "Every document of the envelope, each once, in the new order; `position` follows it. An envelope listing no document takes no order.",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "example": [
+                    "615601fab04c0a3147bb1246",
+                    "615601fab04c0a3147bb1247"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The envelope as changed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentEnvelope"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/activities",
+      "requestBody": null,
+      "response": {
+        "description": "The envelope's activities",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EnvelopeActivity"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sort",
+          "in": "query",
+          "description": "`-id` (default, newest first) or `id`.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "page",
+          "in": "query",
+          "description": "Page number.",
+          "schema": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          }
+        },
+        {
+          "name": "per-page",
+          "in": "query",
+          "description": "Records per page: 20 by default, at most 50; a larger value answers 50 a page.",
+          "schema": {
+            "type": "integer",
+            "default": 20,
+            "maximum": 50,
+            "minimum": 1,
+            "example": 25
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/download/{artifactName}",
+      "requestBody": null,
+      "response": {
+        "description": "The zip",
+        "content": {
+          "application/zip": {
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "artifactName",
+          "in": "path",
+          "description": "Artifact type.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "original",
+              "certificated",
+              "certificate-page",
+              "pades",
+              "bundle"
+            ]
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/cancel",
+      "requestBody": null,
+      "response": {
+        "description": "What happened to each document, in the envelope's order",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "required": [
+                          "id",
+                          "status",
+                          "cancelled"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "615601fab04c0a3147bb1246"
+                          },
+                          "status": {
+                            "description": "The document's status after the call.",
+                            "type": "string",
+                            "example": "rejected_by_user"
+                          },
+                          "cancelled": {
+                            "description": "Whether this call cancelled it.",
+                            "type": "boolean",
+                            "example": true
+                          }
+                        },
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/resend",
+      "requestBody": null,
+      "response": {
+        "description": "Reminder result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "required": [
+                        "is_sent",
+                        "envelope_id",
+                        "signer_id"
+                      ],
+                      "properties": {
+                        "is_sent": {
+                          "description": "Whether every notification method sent it, as on a document's reminder.",
+                          "type": "boolean"
+                        },
+                        "envelope_id": {
+                          "type": "string"
+                        },
+                        "signer_id": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "signerId",
+          "in": "path",
+          "description": "The signer ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/documents",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/EnvelopeDocumentRequest"
+                },
+                {
+                  "properties": {
+                    "max_total_credits": {
+                      "description": "Optional ceiling on what this request may spend, as on an assignment: refused with `409` and code `CreditCeilingExceeded`, nothing created or charged, when the document costs more on its own. A value that is not a number of credits, zero or more, answers `400`; numeric text counts, as a form-encoded body sends it.",
+                      "type": "number",
+                      "minimum": 0,
+                      "example": 1.5
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "description": "The envelope with the document added",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentEnvelope"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "security": [
+        {
+          "bearerAuth": []
+        },
+        {
+          "apiKeyAuth": []
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/{accountId}/envelopes/{envelopeId}/documents/{documentId}",
+      "requestBody": null,
+      "response": {
+        "description": "The envelope without the document",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DocumentEnvelope"
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "name": "accountId",
+          "in": "path",
+          "description": "Workspace account ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "envelopeId",
+          "in": "path",
+          "description": "The envelope ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "documentId",
+          "in": "path",
+          "description": "Document ID.",
           "required": true,
           "schema": {
             "type": "string"

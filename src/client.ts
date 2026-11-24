@@ -83,10 +83,12 @@ export class AssinafyClient {
     return response;
   }
   async envelope<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, options: RequestOptions = {}): Promise<{ data: T; headers: Headers }> {
+    invariant(options.json === undefined || options.form === undefined,
+      'INVALID_INPUT', 'Choose either a JSON body or multipart form data.');
     if (options.idempotencyKey !== undefined) {
       checkIdempotencyKey(options.idempotencyKey);
-      invariant(method === 'POST' && /^\/accounts\/[^/]+\/templates\/[^/]+\/documents$/.test(path),
-        'INVALID_INPUT', 'Idempotency keys are supported only for document creation from a template.');
+      invariant(method === 'POST' && /^\/accounts\/[^/]+\/(?:templates\/[^/]+\/documents|envelopes)$/.test(path),
+        'INVALID_INPUT', 'Idempotency keys are supported only for template document or envelope creation.');
     }
     const response = await this.#send(this.#url(path, options.query), method, options);
     if (response.status >= 300 && response.status < 400) {
